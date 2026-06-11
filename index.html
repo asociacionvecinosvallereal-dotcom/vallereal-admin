@@ -176,24 +176,21 @@ tr:last-child td{border-bottom:none;}
 // ════════════════════════════════════════════════════════════
 const API = "https://script.google.com/macros/s/AKfycbwO4Say505rlSrwM8UwmsMAlukZ0ugEwmcLaf5Ukj3XlLBnmfLBJFNCLxK0eCoBV89YvA/exec";
 
-const ML = ["Feb 24","Mar 24","Abr 24","May 24","Jun 24","Jul 24","Ago 24","Sep 24","Oct 24","Nov 24","Dic 24","Ene 25","Feb 25","Mar 25"];
-
-// Lista de meses generada automáticamente: desde Feb 2024 hasta 18 meses en el futuro
-// ¡Nunca hay que actualizar esto manualmente!
+// ════════════════════════════════════════════════════════════
+//  CONFIGURACIÓN DINÁMICA — TODO SE LEE DE GOOGLE SHEETS
+// ════════════════════════════════════════════════════════════
 const NOMBRES_MES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const ABREV_MES   = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+// Lista de meses para registro de pagos (Feb 2024 hasta 6 meses adelante)
 function generarMeses(){
   const lista = [];
   const hoy = new Date();
-  const finAnio  = hoy.getFullYear() + (hoy.getMonth() >= 6 ? 1 : 0); // hasta fin del año próximo
-  const finMes   = 11; // diciembre
-  let a = 2024, m = 1; // empieza Feb 2024 (índice 1)
-  while(a < finAnio || (a === finAnio && m <= finMes)){
-    lista.push({l: NOMBRES_MES[m]+' '+a, m: ABREV_MES[m], a});
-    m++; if(m>11){m=0;a++;}
-  }
-  // Agregar también hasta 6 meses adicionales del año siguiente para pagos anticipados
-  for(let ex=0; ex<6; ex++){
+  let a = 2024, m = 1;
+  const finA = hoy.getFullYear(), finM = hoy.getMonth()+6;
+  let limA = finM > 11 ? finA+1 : finA;
+  let limM = finM > 11 ? finM-12 : finM;
+  while(a < limA || (a === limA && m <= limM)){
     lista.push({l: NOMBRES_MES[m]+' '+a, m: ABREV_MES[m], a});
     m++; if(m>11){m=0;a++;}
   }
@@ -201,220 +198,42 @@ function generarMeses(){
 }
 const MESES_REG = generarMeses();
 
-const CONCEPTOS_GASTO = [
-  "Vigilancia","Mantenimiento","Limpieza","Jardinería",
-  "Electricidad","Plomería","Pintura","Material","Honorarios","Otro"
-];
+// ML dinámico: detecta el rango de meses con datos reales en Sheets
+function calcularML(){
+  // Construir lista de meses desde Feb 2025 hasta el mes actual + adelantos
+  const lista = [];
+  let a = 2025, m = 1; // Feb 2025
+  const hoy = new Date();
+  let limA = hoy.getFullYear();
+  let limM = hoy.getMonth() + 2; // hasta 2 meses adelante
+  if(limM > 11){ limM -= 12; limA++; }
+  while(a < limA || (a === limA && m <= limM)){
+    lista.push(ABREV_MES[m]+' '+String(a).slice(-2));
+    m++; if(m>11){m=0;a++;}
+  }
+  return lista;
+}
+let ML = calcularML();
+
+const CONCEPTOS_GASTO = ["Vigilancia","Mantenimiento","Limpieza","Jardinería","Electricidad","Plomería","Pintura","Material","Honorarios","Otro"];
 
 // ════════════════════════════════════════════════════════════
-//  DATOS HISTÓRICOS VECINOS
+//  CATÁLOGO DE VECINOS — se llena desde Google Sheets (hoja Vecinos)
 // ════════════════════════════════════════════════════════════
-const HACIENDAS = [
-  {n:"VARGAS GARCÍA ALFONSO",num:"505-1",a:true,p:[0,350,350,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MORENO OLVERA LAURA",num:"505-2",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"CANO RANGEL MARIANA",num:"505-3",a:true,p:[0,350,350,0,0,350,350,350,350,350,350,0,350,350]},
-  {n:"IBARRA URIBE CESAR ANTONIO",num:"505-4",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RIVERA MARTHA ROSA",num:"505-5",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROSALES VELAZQUEZ JAVIER",num:"505-6",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"LOPEZ CORONADO MAYUMI CRISTINA",num:"505-7",a:true,p:[0,0,0,0,0,0,0,350,350,0,0,0,0,0]},
-  {n:"VICTORIA JURADO SERGIO ANTONIO",num:"505-8",a:true,p:[0,350,350,350,350,350,0,350,350,350,350,350,350,0]},
-  {n:"MARTINEZ RUIZ CECILIA",num:"504",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GOMEZ IZAGYUIRRE MINERVA",num:"508",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ALVAREZ MENDEZ ZAIRA E.",num:"513",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ROCHA MADRID JOVITA",num:"516",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"CASTILLO NIETO PEDRO DANIEL",num:"517",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"VALERIO RAMIREZ BIVIANO",num:"520",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"VERASTEGUI OLVERA MA. DEL ROSARIO",num:"521",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ORTIZ RDZ. MA. DE LOS ANGELES",num:"525",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"PARTIDA RODRIGUEZ MA. DEL SOCORRO",num:"528",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"LOPEZ CHAVEZ MARIA ELENA",num:"529",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ORTIZ OLMEDO JOSUE NATANAEL",num:"533",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GARCES MEDINA HAYDEE",num:"537",a:true,p:[0,350,350,0,350,0,0,0,0,0,0,0,0,0]},
-  {n:"ROJAS VELAZQUEZ JOSE ARTURO",num:"541",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"LEON ACUÑA JUAN CARLOS",num:"545",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"LOPEZ FLORES PEDRO JESUS",num:"549",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SOLANO GUEVARA LAURA E.",num:"553",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"NEGRETE CERVANTES MA. GUADALUPE",num:"557",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MEJIA REBOLLAR SANDRA",num:"561",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"LOZANO ORTIZ JESUS RAMON",num:"565",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MTZ. MTZ. OSCAR EDUARDO",num:"569",a:true,p:[0,0,0,350,0,0,0,0,0,0,0,0,0,0]},
-  {n:"LOZANO RDZ. DANIEL",num:"573",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SANCHEZ RDZ. CARLOS ADRIAN",num:"577",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RIOS CASTILLO GERARDO",num:"581",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"VAZQUEZ OJEDA JOSE BRUNO",num:"585",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"GTZ. MTZ. JOSE LEONARDO",num:"589",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ARGUELLO GLZ. ROA JUAN PABLO",num:"593",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CARRILLO TRISTAN CONSUELO",num:"597",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"OLVERA VELAZQUEZ EMMANUEL",num:"605",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MTZ. AVALOS SAIRA PAOLA",num:"609",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"DAVILA BUENO DAVID ANTONIO",num:"613",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SANTANA VILLEGAS SAYRA MAYELLY",num:"617",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CAZARES GARCIA MIGUEL ANGEL",num:"621",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"HERNANDEZ MARTINEZ SANTIAGO",num:"625",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CABRERA MORALES ARMANDO",num:"629",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"LOGO MORALES JOSE TOMAS",num:"657",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"PEREZ GUZMAN BLANCA ESTELA",num:"661",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROSAS SILVA CLAUDIA LILIANA",num:"665",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SANCHEZ MAGAÑA FRANCISCO",num:"669",a:true,p:[0,0,0,350,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROCHA IBARRA ENRIQUE AGUSTIN",num:"673",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CASTILLO LARA JOSE LUIS",num:"677",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SALDIERNA ROSA MARIA",num:"681",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CONTRERAS ZACARIAS CARLOS A.",num:"685",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROMO MATA ARTURO",num:"689",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CARRIZALEZ FLORES OSCAR",num:"693",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"PARRA ARELLANO DANIEL",num:"697",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RUIZ ZAPATA ARTURO",num:"701",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CALDERON SALDIERNA ROSA ELENA",num:"705",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CALDERON SALDIERNA MARCO LINO",num:"709",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RUIZ SANTILLAN LUZ ELSA",num:"713",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CORDOVA NEPOMUCENO VICTOR A.",num:"717",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AVALOS PEREZ CARLOS",num:"721",a:true,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"TOBIAS MENDEZ ALAN",num:"725",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"PEREZ SANCHEZ JUAN FRANCISCO",num:"729",a:true,p:[0,350,350,350,350,0,0,0,0,0,0,0,0,0]},
-  {n:"CURA GONZALEZ NORA",num:"733",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SEVILLA REYES ALMA SILVIA",num:"760",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RODRIGUEZ FAZ MARCO ANTONIO",num:"804",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RIVERA SANCHEZ ADRIANA GUADALUPE",num:"808",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ARIAS SANCHEZ KARIME HASSEL",num:"828",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"HERNANDEZ CERDA JESUS",num:"840",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-];
-
-const PARQUE = [
-  {n:"CAMACHO AVILA JOSE AURELIO",num:"202",a:true,p:[0,0,0,0,0,0,0,350,350,350,350,350,350,350]},
-  {n:"CASTILLO ORTIZ JOSE LUIS",num:"205",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MENDEZ TOVAR MELISSA",num:"206",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RODRIGUEZ URESTI ALAN",num:"209",a:true,p:[0,350,350,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"GARCIA GARCIA GABRIEL",num:"210",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"SAUCEDO PARGA SAUL",num:"213",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"CAMPOS CORDERO FERNANDO",num:"214",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,0,0]},
-  {n:"HERNANDEZ ALONSO JOSUE JOEL",num:"217",a:true,p:[0,0,0,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"MTZ. SAUCEDO CESAR RAUL",num:"218",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"IGLESIAS DEL ROSARIO LUIS DAVID",num:"221",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"ROSAS HERNANDEZ JESUS RAFAEL",num:"222",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"OROZCO BLANCO DIONICIA DEL CARMEN",num:"225",a:true,p:[350,350,350,350,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROCHA TORRES JUAN ALBERTO",num:"226",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AMARO ALVARADO EZEQUIEL",num:"229",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SAUCEDO CASTILLO JUAN EDUARDO",num:"230",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"AGUILAR ZUÑIGA RAFAEL",num:"233",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RIVERA FERNANDEZ DIANA ISETH",num:"234",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"DELGADO MARTINEZ MASIEL",num:"237",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"PEREZ REYES RAQUEL",num:"238",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MEDINA ARREDONDO ADRIANA",num:"241",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CISNEROS HERNANDEZ FAUSTO",num:"242",a:true,p:[0,350,350,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RAMIREZ BRIONES OLIVIA",num:"245",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"VALDEZ LARA FRANCISCO DANIEL",num:"246",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ORTEGA REYES MARIA DEL R.",num:"249",a:true,p:[350,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RAMIREZ PEREZ YELITZA HEVERHAYDE",num:"250",a:true,p:[0,0,0,0,0,0,350,350,350,350,350,350,350,350]},
-  {n:"CRUZ BARRON HUGO OMAR",num:"253",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GOMEZ RDZ. ROBERTO",num:"254",a:true,p:[0,0,0,350,0,0,0,0,0,0,0,0,0,0]},
-  {n:"ROCHA LOPEZ JOSE JULIO",num:"257",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"HUERTA MARTINEZ SAUL DANTE",num:"258",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"FLORES PITONES JUAN JOSE",num:"261",a:true,p:[0,350,350,50,0,0,0,0,0,0,0,0,0,0]},
-  {n:"RIVERA MTZ. CRISTINA DE JESUS",num:"262",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RIVERA JUAREZ LUIS DANIEL",num:"265",a:true,p:[0,0,350,350,0,0,0,0,350,350,350,350,350,350]},
-  {n:"MENDOZA DIAZ JESUS ANTONIO",num:"266",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"PERALTA TERRES MARIA DE LOS A.",num:"269",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"HERNANDEZ ANTONIO GUSTAVO A.",num:"270",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"TORRES RAMIREZ JAIME",num:"273",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"JUACHE PEREZ JOSE JUAN",num:"274",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MEDINA PARRA MARIA DE C.",num:"277",a:true,p:[0,0,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"(Sin nombre registrado)",num:"278",a:true,p:[0,0,0,0,0,0,0,0,350,350,350,350,350,350]},
-  {n:"BRAVO VALERO ENRIQUE",num:"281",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"PARRA ARELLANO JOSE LUIS",num:"282",a:true,p:[400,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"BRAVO LEYVA LUIS ROBERTO",num:"285",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"SANCHEZ RANGEL JOSE INOSENCIO",num:"286",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"VIRAMONTES REYNA LUIS MIGUEL",num:"289",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"SANCHEZ RODRIGUEZ MIGUEL ANGEL",num:"290",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GAMEZ HERNANDEZ EDUARDO",num:"293",a:true,p:[0,100,0,350,350,0,0,0,0,0,0,0,0,0]},
-  {n:"BLANCO LIVERA EVERARDO",num:"297",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"DIMAS ALVARADO ELIZABETH",num:"301",a:true,p:[0,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GUILLEN GUEVARA LUIS FERNANDO",num:"305",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-];
-
-const ASIS = [
-  {n:"CORDOVA NEPOMUCENO BRENDA",num:"102",a:true,p:[0,0,0,350,350,350,350,350,350,350,350,350,350,0]},
-  {n:"VALENCIA GOMEZ JORGE LUIS",num:"103",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,0,350]},
-  {n:"NAJERA GARCIA MINA ADILEN",num:"106",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"PUENTE RIOS JULIO CESAR",num:"107",a:true,p:[0,0,0,0,0,0,0,0,0,0,350,350,350,0]},
-  {n:"MARTINEZ RAMIREZ PERLA CONCEPCION",num:"110",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AGUILAR SANCHEZ MA. GUILLERMINA",num:"111",a:true,p:[0,0,0,0,350,350,350,350,350,350,0,0,0,0]},
-  {n:"NAZARIN RAMOS JUAN MANUEL",num:"114",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,0]},
-  {n:"FLORES GARCIA JUANA MARIA",num:"115",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MEDINA RANGEL JESUS EDUARDO",num:"118",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"LOPEZ MEDINA UGO ALBERTO",num:"122",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,0]},
-  {n:"SANDOVAL CORONILLA MARIA DE JESUS",num:"123",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"SILVA FERNANDEZ ANA KAREN",num:"126",a:true,p:[0,0,0,0,350,350,350,0,350,350,350,350,350,350]},
-  {n:"SANCHEZ ECHEVERRIA JOSE RAYMUNDO",num:"127",a:true,p:[0,0,0,0,350,350,350,0,350,350,350,350,350,350]},
-  {n:"GARNICA CASTRO PAULINA MONTSERRAT",num:"130",a:true,p:[0,0,0,0,350,0,0,0,0,0,0,0,350,0]},
-  {n:"CISNEROS BRIONES JUAN PABLO",num:"131",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GONZALEZ RAMOS ALDO DANIEL",num:"134",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SEGURA ROCHA ARMANDO ALEXIS",num:"135",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,0,0]},
-  {n:"FERNANDEZ MARTINIZ ROSAURA",num:"138",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GALAVIZ CASTILLO OCTAVIO",num:"139",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,0]},
-  {n:"RODRIGUEZ MORENO MARTHA MAYELA",num:"142",a:true,p:[350,350,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GUERRERO ZAPATA VICTOR MANUEL",num:"143",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"CALDERON SALDIERNA MARCO LINO",num:"146",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MELGAREJO CANO J. JESUS",num:"147",a:true,p:[0,0,0,0,0,0,350,350,350,350,0,350,350,350]},
-  {n:"HERNANDEZ CRUZ SUSANA",num:"150",a:true,p:[0,0,0,350,350,0,350,350,350,350,0,0,0,0]},
-  {n:"MORELES VARGAS MARIA VANESA",num:"151",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AREVALO CERVANTES GRICELDA",num:"154",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"SOLANO GUEVARA ZURAYA MARISOL",num:"155",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"LOPEZ VACA JESUS ALBERTO",num:"158",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,0,0]},
-  {n:"GARCIA LUNA JUANA IRMA",num:"159",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"CARDONA VAZQUEZ JUAN DIEGO",num:"162",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"HERNANDEZ ADAN JUAN RAMON",num:"163",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"FLORES MEDINA FABIAN ULISES",num:"166",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"VELAZQUEZ HERNANDEZ ABELARDO",num:"167",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"PALACIOS BRIONES SALVADOR",num:"170",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,250,350,350]},
-  {n:"MIRANDA LIRA MARIA ESTHER",num:"171",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ESPARZA ALVARADO MA. GUADALUPE",num:"174",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"LOPEZ CONTRERAS VICTOR",num:"178",a:true,p:[0,0,0,0,350,0,350,350,0,350,350,350,350,350]},
-  {n:"GOMEZ GALICIA MARIA GUADALUPE",num:"179",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GONZALEZ CASTORENA ROSA ISELA",num:"182",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,0,350]},
-  {n:"RAMIREZ LOPEZ JOSE MANUEL",num:"183",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MARQUEZ ALEJANDRO CLETO",num:"186",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AGUILAR GUERRERO ALEJANDRA",num:"187",a:true,p:[0,0,0,0,0,350,350,0,350,0,350,350,350,350]},
-  {n:"GOMEZ SANCHEZ MA. DEL SOCORRO",num:"190",a:true,p:[0,0,0,0,0,350,350,350,350,350,350,350,350,350]},
-  {n:"PEREZ RODRIGUEZ HERMAN MIGUEL",num:"191",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,0]},
-  {n:"ZAMBRANO TORRES CARLOS A.",num:"194",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GIL CALDERON JESUS OCTAVIO",num:"195",a:true,p:[0,0,0,0,350,350,0,0,0,0,0,0,0,0]},
-  {n:"MARTINEZ NAVARRO SERGIO ANTONIO",num:"198",a:true,p:[0,0,0,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ZARATE GALINDO FERNANDO",num:"199",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,0]},
-  {n:"GUERRERO CORONADO GABRIEL A.",num:"202",a:true,p:[0,0,0,0,350,350,0,0,350,350,350,350,350,0]},
-  {n:"ANGELES POZOS MARCO ANTONIO",num:"203",a:true,p:[0,0,0,0,350,350,0,0,0,0,350,350,350,0]},
-  {n:"DEANDA RAMIREZ JOSE MAURICIO",num:"206",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"NAVA DOMINGUEZ JAIME DAVID",num:"207",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"SOLOSANO FUENTES MARISOL",num:"210",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"GARCIA JOSE GERARDO",num:"211",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"AVALOS AGUILAR ANTONIO",num:"214",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"MORIN CELESTINO ELIZABETH",num:"215",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"HDZ. FONSECA ADAN DE JESUS",num:"218",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"DE LA TORRE BARRON JOSE EDUARDO",num:"219",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ZARAZUA FLORES KAREN YADIRA",num:"222",a:true,p:[0,0,350,350,350,350,350,350,350,350,350,350,350,350]},
-  {n:"MUÑOZ VILLAGOMEZ EDGAR",num:"223",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"RODRIGUEZ CERDA MARISELA",num:"226",a:true,p:[0,0,0,0,350,350,350,350,350,350,350,350,350,350]},
-  {n:"ESPINIOSA ROBLES MIGUEL ANGEL",num:"227",a:false,p:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-  {n:"DELGADO NAVARRO JUAN A.",num:"231",a:true,p:[0,0,0,0,350,350,350,0,0,0,350,350,350,350]},
-  {n:"PEREZ PADRON ALMA ROSA",num:"277",a:true,p:[0,0,0,0,350,0,0,0,0,0,0,0,0,0]},
-];
-
-const GASTOS_BASE = {
-  haciendas:{vig:[0,8633,8700,7850,7850,7900,8000,7850,10000,10000,10350,11634,0,0],otro:[0,0,0,0,0,0,0,0,0,10000,0,0,0,0]},
-  parque:   {vig:[0,8700,8550,7750,7750,7850,7900,7800,10000,10000,10000,11100,0,0],otro:[114,0,0,249,40,249,100,181,405,12934,2264,3030,400,57]},
-  asis:     {vig:[0,0,0,0,8567,8650,7900,7900,7750,7600,7850,3500,10700,10350],otro:[0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-};
+let VECINOS_DB = {haciendas:[], parque:[], asis:[]};
 
 const CALLES = [
-  {id:"haciendas",label:"C. de las Haciendas",icon:"🏠",cls:"ah",vecinos:HACIENDAS},
-  {id:"parque",   label:"Calzada del Parque",  icon:"🌳",cls:"ap",vecinos:PARQUE},
-  {id:"asis",     label:"Sendero de Asís",     icon:"🛤️",cls:"aa",vecinos:ASIS},
+  {id:"haciendas",label:"C. de las Haciendas",icon:"🏠",cls:"ah",vecinos:[]},
+  {id:"parque",   label:"Calzada del Parque",  icon:"🌳",cls:"ap",vecinos:[]},
+  {id:"asis",     label:"Sendero de Asís",     icon:"🛤️",cls:"aa",vecinos:[]},
 ];
+
 
 // ════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
 // ════════════════════════════════════════════════════════════
 let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7};
-let DB = {pagos:[], gastos:[], notas:[]};
+let DB = {pagos:[], gastos:[], notas:[], vecinos:[]};
 
 // ════════════════════════════════════════════════════════════
 //  UTILIDADES
@@ -423,24 +242,40 @@ const fmt = n => '$'+Math.round(n).toLocaleString('es-MX');
 const calle = () => CALLES[S.ci];
 
 function pagoMes(v, i){
-  const base = v.p[i]||0;
   const ml = ML[i]; const mp = ml.split(' ');
-  const extra = DB.pagos
-    .filter(p=>p.Calle===calle().id && p.Numero===v.num && p.Mes===mp[0] && String(p.Año).slice(-2)===mp[1])
+  return DB.pagos
+    .filter(p=>p.Calle===calle().id && String(p.Numero)===String(v.num) && p.Mes===mp[0] && String(p.Año).slice(-2)===mp[1])
     .reduce((s,p)=>s+Number(p.Monto),0);
-  return base+extra;
 }
 
-function gastoMesExtra(calleId, i){
+function gastoMes(calleId, i){
   const ml = ML[i]; const mp = ml.split(' ');
   return DB.gastos
     .filter(g=>g.Calle===calleId && g.Mes===mp[0] && String(g.Año).slice(-2)===mp[1])
     .reduce((s,g)=>s+Number(g.Monto),0);
 }
+function gastoMesExtra(calleId, i){ return gastoMes(calleId, i); }
 
 // ════════════════════════════════════════════════════════════
 //  API GOOGLE SHEETS
 // ════════════════════════════════════════════════════════════
+// Construye el catálogo de vecinos desde la hoja Vecinos de Sheets
+function construirCatalogo(){
+  VECINOS_DB = {haciendas:[], parque:[], asis:[]};
+  (DB.vecinos||[]).forEach(function(row){
+    const calle = String(row.Calle||'').toLowerCase().trim();
+    if(VECINOS_DB[calle]){
+      VECINOS_DB[calle].push({
+        num: String(row.Numero||'').trim(),
+        n: row.Nombre||('Casa '+row.Numero),
+        a: String(row.Aporta||'').toLowerCase()==='si'
+      });
+    }
+  });
+  // Asignar a cada calle su lista de vecinos
+  CALLES.forEach(function(c){ c.vecinos = VECINOS_DB[c.id]||[]; });
+}
+
 async function cargar(){
   document.getElementById('syncInfo').innerHTML = '<span class="spin"></span>Cargando…';
   try {
@@ -458,6 +293,9 @@ async function cargar(){
       DB.pagos  = d.pagos  || [];
       DB.gastos = d.gastos || [];
       DB.notas  = d.notas  || [];
+      DB.vecinos = d.vecinos || [];
+      construirCatalogo();
+      ML = calcularML();
     }
     const ts = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('syncInfo').textContent =
@@ -478,13 +316,12 @@ async function enviar(payload, btnId, msgId){
   btn.disabled=true; btn.innerHTML='<span class="spin"></span>Guardando…';
   msg.className='fmsg'; msg.style.display='none';
   try {
-    const r = await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
-    const d = await r.json();
-    if(d.ok){ return true; }
-    throw new Error(d.error||'Error');
+    await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+    await new Promise(r=>setTimeout(r,800));
+    return true;
   } catch(e){
     msg.className='fmsg err';
-    msg.textContent='❌ Error al guardar: '+e.message;
+    msg.textContent='❌ Error al guardar: '+e.message+'. Verifica tu conexión.';
     btn.disabled=false; btn.textContent='Reintentar';
     return false;
   }
@@ -504,17 +341,17 @@ function rBtns(){
 
 function rMets(){
   const c = calle();
+  const nv = c.vecinos.length || 1;
   const si=c.vecinos.filter(v=>v.a).length, no=c.vecinos.length-si;
-  const base=c.vecinos.reduce((s,v)=>s+v.p.reduce((a,b)=>a+b,0),0);
-  const extra=DB.pagos.filter(p=>p.Calle===c.id).reduce((s,p)=>s+Number(p.Monto),0);
-  const gExtra=DB.gastos.filter(g=>g.Calle===c.id).reduce((s,g)=>s+Number(g.Monto),0);
+  const ingresos=DB.pagos.filter(p=>p.Calle===c.id).reduce((s,p)=>s+Number(p.Monto),0);
+  const gastos=DB.gastos.filter(g=>g.Calle===c.id).reduce((s,g)=>s+Number(g.Monto),0);
   document.getElementById('mets').innerHTML=`
     <div class="met mgr"><div class="l">Total casas</div><div class="v">${c.vecinos.length}</div></div>
     <div class="met mvd"><div class="l">✅ Aportando</div><div class="v">${si}</div></div>
     <div class="met mrj"><div class="l">❌ No aportan</div><div class="v">${no}</div></div>
-    <div class="met maz"><div class="l">📊 Participación</div><div class="v">${Math.round(si/c.vecinos.length*100)}%</div></div>
-    <div class="met mam"><div class="l">💰 Ingresos totales</div><div class="v" style="font-size:13px">${fmt(base+extra)}</div></div>
-    <div class="met mrj"><div class="l">💸 Gastos nuevos</div><div class="v" style="font-size:13px">${fmt(gExtra)}</div></div>`;
+    <div class="met maz"><div class="l">📊 Participación</div><div class="v">${Math.round(si/nv*100)}%</div></div>
+    <div class="met mam"><div class="l">💰 Ingresos totales</div><div class="v" style="font-size:13px">${fmt(ingresos)}</div></div>
+    <div class="met mrj"><div class="l">💸 Gastos totales</div><div class="v" style="font-size:13px">${fmt(gastos)}</div></div>`;
 }
 
 function rTabs(){
@@ -784,20 +621,16 @@ function rVecinos(){
 
 // ─── TAB: FINANZAS ────────────────────────────────────────────────────────────
 function rFinanzas(){
-  const c=calle(), g=GASTOS_BASE[c.id];
+  const c=calle();
   const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMes(v,i),0));
-  const vigBase=g.vig, otroBase=g.otro;
-  const gasExtra=ML.map((_,i)=>gastoMesExtra(c.id,i));
-  const gasTotal=vigBase.map((v,i)=>v+otroBase[i]+gasExtra[i]);
+  const gasTotal=ML.map((_,i)=>gastoMes(c.id,i));
   const saldo=ing.map((v,i)=>v-gasTotal[i]);
   let acc=0; const caja=saldo.map(s=>{acc+=s;return acc;});
   const tI=ing.reduce((a,b)=>a+b,0), tG=gasTotal.reduce((a,b)=>a+b,0);
   const si=c.vecinos.filter(v=>v.a).length;
   const filas=[
     {l:"💰 Aportaciones",   d:ing,     cls:"ffin-vd"},
-    {l:"🚨 Vigilancia",     d:vigBase, cls:"ffin-rj"},
-    {l:"🔧 Otros (hist.)",  d:otroBase,cls:"ffin-rj"},
-    {l:"🆕 Gastos nuevos",  d:gasExtra,cls:"ffin-rj"},
+    {l:"💸 Gastos",         d:gasTotal,cls:"ffin-rj"},
     {l:"📈 Saldo mensual",  d:saldo,   cls:""},
     {l:"🏦 Caja acumulada", d:caja,    cls:"ffin-az"},
   ];
@@ -1158,10 +991,9 @@ function setFiltro(v){ S.filtro=v; rCont(); }
 function setMeses(v){ S.meses=parseInt(v); rCont(); }
 
 // ── INICIO ────────────────────────────────────────────────────
-render();
-cargar();
+render();      // Render inicial (tablas vacías hasta que cargue Sheets)
+cargar();      // Carga datos de Google Sheets y vuelve a renderizar
 setInterval(cargar, 120000);
 </script>
 </body>
 </html>
-
