@@ -839,7 +839,7 @@ function rValidar(){
   const filas = pendientes.length === 0
     ? `<tr><td colspan="8" class="empty">✅ No hay pagos pendientes de validar para ${c.label}.<br>Todos los pagos están al corriente.</td></tr>`
     : pendientes.map((p,i) => {
-        const tieneComp = p.Comprobante && String(p.Comprobante).length > 10;
+        const tieneComp = p.Comprobante && String(p.Comprobante).length > 10 && !String(p.Comprobante).includes('Sin imagen');
         const esTransf  = String(p.TipoPago||'').toLowerCase().includes('transfer');
         return `<tr id="vr${i}">
           <td class="iz" style="font-size:11px;color:#888">${String(p.Fecha||'').substring(0,16)}</td>
@@ -1034,6 +1034,12 @@ function verComprobante(fila){
   const p = DB.pagos.find(x => x._fila == fila);
   if(!p || !p.Comprobante) return;
   const comp = String(p.Comprobante);
+  // Si es un link de Google Drive, abrir en pestaña nueva
+  if(comp.startsWith('http')){
+    window.open(comp, '_blank');
+    return;
+  }
+  // Si es imagen base64, mostrar en modal
   const modal = document.getElementById('modalComp');
   const img   = document.getElementById('compImg');
   const pdf   = document.getElementById('compPDF');
