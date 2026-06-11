@@ -906,6 +906,130 @@ function rValidar(){
 // Estado temporal del recibo actual
 let _reciboData = {};
 
+
+// ─── TAB: CORRECCIONES ───────────────────────────────────────────────────────
+function rCorrecciones(){
+  const c = calle();
+  const pagos  = DB.pagos.filter(p=>p.Calle===c.id);
+  const gastos = DB.gastos.filter(g=>g.Calle===c.id);
+
+  function tblPagos(){
+    if(pagos.length===0) return '<p class="empty">No hay pagos registrados en Google Sheets para esta calle.</p>';
+    return '<table><thead><tr>'+
+      '<th class="iz">Fecha</th><th class="iz">Casa</th><th class="iz">Nombre</th>'+
+      '<th>Mes</th><th>Año</th><th>Monto</th><th>Estado</th><th>Editar</th><th>Eliminar</th>'+
+      '</tr></thead><tbody>'+
+      pagos.map((p,i)=>'<tr id="pr'+i+'">'+
+        '<td class="iz" style="font-size:11px;color:#888">'+String(p.Fecha).substring(0,16)+'</td>'+
+        '<td class="iz" style="font-weight:700">'+p.Numero+'</td>'+
+        '<td class="iz">'+p.Nombre+'</td>'+
+        '<td>'+p.Mes+'</td><td>'+p.Año+'</td>'+
+        '<td style="font-weight:700;color:#2B5209">'+fmt(Number(p.Monto))+'</td>'+
+        '<td style="font-size:11px">'+(p.Estado||'—')+'</td>'+
+        '<td><button class="btn btn-az" style="padding:5px 10px;font-size:11px;width:auto" onclick="editarPago('+p._fila+','+i+')">✏️</button></td>'+
+        '<td><button class="btn btn-rj" style="padding:5px 10px;font-size:11px;width:auto" onclick="eliminarReg(\'Pagos\','+p._fila+',\'pr'+i+'\')">🗑️</button></td>'+
+      '</tr>').join('')+
+      '</tbody></table>';
+  }
+
+  function tblGastos(){
+    if(gastos.length===0) return '<p class="empty">No hay gastos registrados en Google Sheets para esta calle.</p>';
+    return '<table><thead><tr>'+
+      '<th class="iz">Fecha</th><th>Mes</th><th>Año</th><th>Concepto</th>'+
+      '<th>Monto</th><th>Editar</th><th>Eliminar</th>'+
+      '</tr></thead><tbody>'+
+      gastos.map((g,i)=>'<tr id="gr'+i+'">'+
+        '<td class="iz" style="font-size:11px;color:#888">'+String(g.Fecha).substring(0,16)+'</td>'+
+        '<td>'+g.Mes+'</td><td>'+g.Año+'</td>'+
+        '<td style="font-weight:700">'+g.Concepto+'</td>'+
+        '<td style="font-weight:700;color:#8B1A1A">'+fmt(Number(g.Monto))+'</td>'+
+        '<td><button class="btn btn-az" style="padding:5px 10px;font-size:11px;width:auto" onclick="editarGasto('+g._fila+','+i+')">✏️</button></td>'+
+        '<td><button class="btn btn-rj" style="padding:5px 10px;font-size:11px;width:auto" onclick="eliminarReg(\'Gastos\','+g._fila+',\'gr'+i+'\')">🗑️</button></td>'+
+      '</tr>').join('')+
+      '</tbody></table>';
+  }
+
+  return '<div class="card azul" style="margin-bottom:10px">'+
+    '<h2>🔧 Correcciones · '+c.icon+' '+c.label+'</h2>'+
+    '<p style="font-size:12px;color:#555;line-height:1.7">Edita montos incorrectos o elimina registros equivocados.<br>⚠️ Solo se muestran registros guardados en Google Sheets.</p>'+
+    '</div>'+
+    '<div id="msgCorr" class="fmsg" style="margin-bottom:12px"></div>'+
+    '<div class="card azul" style="margin-bottom:14px"><h2 style="margin-bottom:12px">💳 Pagos ('+pagos.length+')</h2><div class="twrap">'+tblPagos()+'</div></div>'+
+    '<div class="card rojo"><h2 style="margin-bottom:12px">💸 Gastos ('+gastos.length+')</h2><div class="twrap">'+tblGastos()+'</div></div>'+
+    '<div id="modalEdit" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center"><div style="background:white;border-radius:12px;padding:28px;max-width:440px;width:90%"><h3 id="modalTit" style="margin-bottom:18px;color:#1a3a6b"></h3><div id="modalCampos"></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-az" id="modalGuardar" style="flex:1" onclick="confirmarEdicion()">💾 Guardar</button><button class="btn btn-sec" style="flex:1" onclick="cerrarModalEdit()">Cancelar</button></div><div class="fmsg" id="msgModal" style="margin-top:10px"></div></div></div>';
+}
+
+let _editando = {hoja:'', fila:0, campos:[]};
+
+function editarPago(fila, idx){
+  const p = DB.pagos.filter(x=>x.Calle===calle().id)[idx];
+  _editando = {hoja:'Pagos', fila, campos:[
+    {label:'Mes',col:4,valor:p.Mes,id:'eM'},
+    {label:'Año',col:5,valor:p.Año,id:'eA'},
+    {label:'Monto',col:6,valor:p.Monto,id:'eMonto'},
+    {label:'Nota',col:7,valor:p.Nota||'',id:'eNota'},
+  ]};
+  abrirModalEdit('✏️ Editar pago · Casa '+p.Numero);
+}
+
+function editarGasto(fila, idx){
+  const g = DB.gastos.filter(x=>x.Calle===calle().id)[idx];
+  _editando = {hoja:'Gastos', fila, campos:[
+    {label:'Mes',col:2,valor:g.Mes,id:'eM'},
+    {label:'Año',col:3,valor:g.Año,id:'eA'},
+    {label:'Concepto',col:4,valor:g.Concepto,id:'eC'},
+    {label:'Monto',col:5,valor:g.Monto,id:'eMonto'},
+  ]};
+  abrirModalEdit('✏️ Editar gasto · '+g.Concepto);
+}
+
+function abrirModalEdit(titulo){
+  document.getElementById('modalTit').textContent = titulo;
+  document.getElementById('modalCampos').innerHTML = _editando.campos.map(c=>
+    '<div style="margin-bottom:12px"><label style="display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;text-transform:uppercase">'+c.label+'</label><input id="'+c.id+'" value="'+c.valor+'" style="width:100%;height:40px;border:1.5px solid #ccc;border-radius:7px;padding:0 12px;font-size:13px"></div>'
+  ).join('');
+  document.getElementById('msgModal').style.display='none';
+  document.getElementById('modalEdit').style.display='flex';
+}
+
+function cerrarModalEdit(){ document.getElementById('modalEdit').style.display='none'; }
+
+async function confirmarEdicion(){
+  const btn = document.getElementById('modalGuardar');
+  const msg = document.getElementById('msgModal');
+  btn.disabled=true; btn.textContent='⏳ Guardando…';
+  try{
+    for(const c of _editando.campos){
+      const val = document.getElementById(c.id).value;
+      await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({tipo:'editar',hoja:_editando.hoja,fila:_editando.fila,col:c.col,valor:val})});
+      await new Promise(r=>setTimeout(r,400));
+    }
+    msg.className='fmsg ok'; msg.style.display='block'; msg.textContent='✅ Actualizado correctamente.';
+    btn.disabled=false; btn.textContent='💾 Guardar';
+    setTimeout(()=>{ cerrarModalEdit(); cargar(); }, 1200);
+  }catch(ex){
+    msg.className='fmsg err'; msg.style.display='block'; msg.textContent='❌ '+ex.message;
+    btn.disabled=false; btn.textContent='💾 Guardar';
+  }
+}
+
+async function eliminarReg(hoja, fila, rowId){
+  if(!confirm('¿Seguro que deseas eliminar este registro? No se puede deshacer.')) return;
+  const msgC = document.getElementById('msgCorr');
+  msgC.style.display='block';
+  try{
+    await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({tipo:'eliminar',hoja,fila})});
+    await new Promise(r=>setTimeout(r,800));
+    msgC.className='fmsg ok'; msgC.textContent='✅ Registro eliminado.';
+    setTimeout(()=>cargar(), 1500);
+  }catch(ex){
+    msgC.className='fmsg err'; msgC.textContent='❌ Error: '+ex.message;
+  }
+}
+
+
 function verComprobante(fila){
   const p = DB.pagos.find(x => x._fila == fila);
   if(!p || !p.Comprobante) return;
