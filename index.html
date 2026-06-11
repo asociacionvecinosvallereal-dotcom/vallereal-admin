@@ -444,14 +444,30 @@ function gastoMesExtra(calleId, i){
 async function cargar(){
   document.getElementById('syncInfo').innerHTML = '<span class="spin"></span>Cargando…';
   try {
-    const r = await fetch(API+'?t='+Date.now());
-    const d = await r.json();
-    if(d.ok){ DB.pagos=d.pagos||[]; DB.gastos=d.gastos||[]; DB.notas=d.notas||[]; }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    const r = await fetch(API+'?t='+Date.now(), {
+      method: 'GET',
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    clearTimeout(timeout);
+    const txt = await r.text();
+    const d = JSON.parse(txt);
+    if(d.ok){
+      DB.pagos  = d.pagos  || [];
+      DB.gastos = d.gastos || [];
+      DB.notas  = d.notas  || [];
+    }
     const ts = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('syncInfo').textContent =
       `✅ ${ts} · ${DB.pagos.length} pagos · ${DB.gastos.length} gastos · ${DB.notas.length} notas`;
   } catch(e){
-    document.getElementById('syncInfo').textContent = '❌ Sin conexión a internet';
+    if(e.name === 'AbortError'){
+      document.getElementById('syncInfo').textContent = '⚠️ Tiempo agotado — mostrando datos históricos';
+    } else {
+      document.getElementById('syncInfo').textContent = '⚠️ Error: '+e.message+' — mostrando datos históricos';
+    }
   }
   render();
 }
@@ -961,3 +977,60 @@ async function rechazarPago(fila, idx){
   }
 }
 
+function mostrarRecibo(d){
+  const cont = document.getElementById('reciboContenido');
+  if(!cont) return;
+  cont.innerHTML =
+    '<div style="text-align:center;border-bottom:3px solid #1a3a6b;padding-bottom:16px;margin-bottom:16px">'+
+      '<div style="font-size:20px;font-weight:700;color:#1a3a6b">FRACC. VALLE REAL</div>'+
+      '<div style="font-size:12px;color:#888;margin-top:2px">'+d.calle+'</div>'+
+    '</div>'+
+    '<div style="text-align:center;margin-bottom:18px">'+
+      '<div style="display:inline-block;background:#EAF3DE;border:2px solid #3B6D11;border-radius:8px;padding:10px 24px">'+
+        '<div style="font-size:11px;color:#3B6D11;font-weight:700;letter-spacing:1px">RECIBO OFICIAL DE PAGO</div>'+
+        '<div style="font-size:22px;font-weight:700;color:#2B5209;letter-spacing:2px">'+d.folio+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888;width:40%">Vecino</td><td style="padding:9px 4px;font-weight:700;color:#1a3a6b">'+d.nombre+'</td></tr>'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888">Casa</td><td style="padding:9px 4px;font-weight:700">'+d.casa+'</td></tr>'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888">Mes</td><td style="padding:9px 4px">'+d.mes+'</td></tr>'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888">Forma de pago</td><td style="padding:9px 4px">'+(String(d.tipoPago).toLowerCase().includes('transfer')?'Transferencia':'Efectivo')+'</td></tr>'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888">Monto</td><td style="padding:9px 4px;font-weight:700;color:#2B5209;font-size:16px">$'+Math.round(d.monto).toLocaleString('es-MX')+' MXN</td></tr>'+
+      '<tr style="border-bottom:1px solid #eee"><td style="padding:9px 4px;color:#888">Fecha</td><td style="padding:9px 4px">'+d.fecha+'</td></tr>'+
+      '<tr><td style="padding:9px 4px;color:#888">Validado por</td><td style="padding:9px 4px;font-weight:700">'+d.responsable+'</td></tr>'+
+      (d.nota?'<tr style="border-top:1px solid #eee"><td style="padding:9px 4px;color:#888">Nota</td><td style="padding:9px 4px;color:#666">'+d.nota+'</td></tr>':'')+
+    '</table>'+
+    '<div style="text-align:center;border-top:2px dashed #ccc;padding-top:16px">'+
+      '<div style="display:inline-block;background:#1a3a6b;color:white;border-radius:50px;padding:8px 26px;font-size:14px;font-weight:700;letter-spacing:1px">PAGO CONFIRMADO</div>'+
+      '<div style="font-size:10px;color:#aaa;margin-top:10px">Comprobante oficial de aportacion vecinal · '+d.folio+'</div>'+
+    '</div>';
+  document.getElementById('modalRecibo').style.display='flex';
+}
+
+function imprimirRecibo(){
+  const contenido = document.getElementById('reciboContenido').innerHTML;
+  const w = window.open('','_blank','width=480,height=700');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo '+_reciboData.folio+'</title><style>body{font-family:Arial,sans-serif;padding:20px;max-width:480px;margin:0 auto;}@media print{body{padding:0;}}</style></head><body>'+contenido+'<script>window.onload=function(){window.print();}<\/script></body></html>');
+  w.document.close();
+}
+
+function cerrarRecibo(){
+  const m = document.getElementById('modalRecibo');
+  if(m) m.style.display='none';
+}
+
+// ── ACCIONES NAVEGACIÓN ───────────────────────────────────────
+function setCalle(i){ S.ci=i; S.busq=''; S.filtro='todos'; render(); }
+function setTab(t){ S.tab=t; render(); }
+function setBusq(v){ S.busq=v; rCont(); }
+function setFiltro(v){ S.filtro=v; rCont(); }
+function setMeses(v){ S.meses=parseInt(v); rCont(); }
+
+// ── INICIO ────────────────────────────────────────────────────
+render();
+cargar();
+setInterval(cargar, 120000);
+</script>
+</body>
+</html>
