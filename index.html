@@ -241,6 +241,20 @@ let DB = {pagos:[], gastos:[], notas:[], vecinos:[]};
 const fmt = n => '$'+Math.round(n).toLocaleString('es-MX');
 const calle = () => CALLES[S.ci];
 
+// Detecta si un pago NO debe contar en ingresos (admin anterior)
+// Pago del mes que SÍ cuenta como ingreso (excluye admin anterior)
+function pagoMesIngreso(v, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.pagos
+    .filter(p=>p.Calle===calle().id && String(p.Numero)===String(v.num) && p.Mes===mp[0] && String(p.Año).slice(-2)===mp[1] && !noCuentaIngreso(p))
+    .reduce((s,p)=>s+Number(p.Monto),0);
+}
+
+function noCuentaIngreso(p){
+  const nota = String(p.Nota||'').toLowerCase();
+  return nota.indexOf('administracion anterior')>=0 || nota.indexOf('administración anterior')>=0 || nota.indexOf('no recibido')>=0;
+}
+
 function pagoMes(v, i){
   const ml = ML[i]; const mp = ml.split(' ');
   return DB.pagos
@@ -343,7 +357,7 @@ function rMets(){
   const c = calle();
   const nv = c.vecinos.length || 1;
   const si=c.vecinos.filter(v=>v.a).length, no=c.vecinos.length-si;
-  const ingresos=DB.pagos.filter(p=>p.Calle===c.id).reduce((s,p)=>s+Number(p.Monto),0);
+  const ingresos=DB.pagos.filter(p=>p.Calle===c.id && !noCuentaIngreso(p)).reduce((s,p)=>s+Number(p.Monto),0);
   const gastos=DB.gastos.filter(g=>g.Calle===c.id).reduce((s,g)=>s+Number(g.Monto),0);
   document.getElementById('mets').innerHTML=`
     <div class="met mgr"><div class="l">Total casas</div><div class="v">${c.vecinos.length}</div></div>
@@ -577,7 +591,7 @@ function rVecinos(){
     const ma=S.filtro==="todos"||(S.filtro==="si"&&v.a)||(S.filtro==="no"&&!v.a);
     return mn&&ma;
   });
-  const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMes(v,i),0));
+  const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMesIngreso(v,i),0));
   const rows=filtered.map(v=>{
     const pagos=Array.from({length:mc},(_,i)=>pagoMes(v,i));
     const total=pagos.reduce((a,b)=>a+b,0), mp=pagos.filter(x=>x>0).length;
@@ -622,7 +636,7 @@ function rVecinos(){
 // ─── TAB: FINANZAS ────────────────────────────────────────────────────────────
 function rFinanzas(){
   const c=calle();
-  const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMes(v,i),0));
+  const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMesIngreso(v,i),0));
   const gasTotal=ML.map((_,i)=>gastoMes(c.id,i));
   const saldo=ing.map((v,i)=>v-gasTotal[i]);
   let acc=0; const caja=saldo.map(s=>{acc+=s;return acc;});
