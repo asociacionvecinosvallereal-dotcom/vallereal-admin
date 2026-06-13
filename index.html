@@ -209,7 +209,8 @@ function calcularML(){
   let limM = hoy.getMonth() + 3;
   while(limM > 11){ limM -= 12; limA++; }
   // Extender si hay pagos en meses más recientes que el límite
-  (DB.pagos||[]).forEach(function(p){
+  const _pagos = (typeof DB !== 'undefined' && DB.pagos) ? DB.pagos : [];
+  _pagos.forEach(function(p){
     const idx = ABREV_MES.indexOf(p.Mes);
     const anio = parseInt(p.Año);
     if(idx>=0 && anio){
@@ -222,6 +223,7 @@ function calcularML(){
   }
   return lista;
 }
+let DB = {pagos:[], gastos:[], notas:[], vecinos:[]};
 let ML = calcularML();
 
 const CONCEPTOS_GASTO = ["Vigilancia","Mantenimiento","Limpieza","Jardinería","Electricidad","Plomería","Pintura","Material","Honorarios","Otro"];
@@ -242,7 +244,6 @@ const CALLES = [
 //  ESTADO GLOBAL
 // ════════════════════════════════════════════════════════════
 let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7};
-let DB = {pagos:[], gastos:[], notas:[], vecinos:[]};
 
 // ════════════════════════════════════════════════════════════
 //  UTILIDADES
