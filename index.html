@@ -286,17 +286,25 @@ function gastoMesExtra(calleId, i){ return gastoMes(calleId, i); }
 // Construye el catálogo de vecinos desde la hoja Vecinos de Sheets
 function construirCatalogo(){
   VECINOS_DB = {haciendas:[], parque:[], asis:[]};
+  // Construir set de casas que tienen al menos un pago real registrado
+  const casasConPago = {};
+  (DB.pagos||[]).forEach(function(p){
+    const k = String(p.Calle||'').toLowerCase().trim() + '|' + String(p.Numero||'').trim();
+    if(Number(p.Monto) > 0) casasConPago[k] = true;
+  });
   (DB.vecinos||[]).forEach(function(row){
     const calle = String(row.Calle||'').toLowerCase().trim();
+    const num = String(row.Numero||'').trim();
     if(VECINOS_DB[calle]){
+      const aportaSheet = String(row.Aporta||'').toLowerCase()==='si';
+      const tienePago = casasConPago[calle+'|'+num] === true;
       VECINOS_DB[calle].push({
-        num: String(row.Numero||'').trim(),
-        n: row.Nombre||('Casa '+row.Numero),
-        a: String(row.Aporta||'').toLowerCase()==='si'
+        num: num,
+        n: row.Nombre||('Casa '+num),
+        a: aportaSheet || tienePago  // Activo si lo dice la hoja O si tiene pagos
       });
     }
   });
-  // Asignar a cada calle su lista de vecinos
   CALLES.forEach(function(c){ c.vecinos = VECINOS_DB[c.id]||[]; });
 }
 
@@ -595,7 +603,14 @@ async function guardarNota(){
 
 // ─── TAB: VECINOS ─────────────────────────────────────────────────────────────
 function rVecinos(){
-  const c=calle(), mc=Math.min(S.meses,14);
+  const c=calle();
+  // Mostrar los ÚLTIMOS N meses (los más recientes), no los primeros
+  const nMeses = S.meses;  // 4, 7, 10, 14 o 999 (todos)
+  const totalMeses = ML.length;
+  const desde = (nMeses >= 999) ? 0 : Math.max(0, totalMeses - nMeses);
+  const idxVisibles = [];
+  for(let i=desde; i<totalMeses; i++) idxVisibles.push(i);
+
   const filtered=c.vecinos.filter(v=>{
     const mn=v.n.toLowerCase().includes(S.busq.toLowerCase())||v.num.includes(S.busq);
     const ma=S.filtro==="todos"||(S.filtro==="si"&&v.a)||(S.filtro==="no"&&!v.a);
@@ -603,8 +618,10 @@ function rVecinos(){
   });
   const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMesIngreso(v,i),0));
   const rows=filtered.map(v=>{
-    const pagos=Array.from({length:mc},(_,i)=>pagoMes(v,i));
-    const total=pagos.reduce((a,b)=>a+b,0), mp=pagos.filter(x=>x>0).length;
+    const pagos=idxVisibles.map(i=>pagoMes(v,i));
+    // Total y meses pagados se cuentan sobre TODOS los meses, no solo los visibles
+    const todosPagos=ML.map((_,i)=>pagoMes(v,i));
+    const total=todosPagos.reduce((a,b)=>a+b,0), mp=todosPagos.filter(x=>x>0).length;
     return `<tr>
       <td class="iz" style="font-weight:700">${v.num}</td>
       <td class="iz">${v.n}</td>
@@ -623,21 +640,22 @@ function rVecinos(){
         <option value="no" ${S.filtro==="no"?"selected":""}>Solo inactivos ✗</option>
       </select>
       <select onchange="setMeses(this.value)">
-        ${[4,7,10,14].map(n=>`<option value="${n}" ${S.meses===n?"selected":""}>${n} meses</option>`).join('')}
+        ${[4,7,10,14].map(n=>`<option value="${n}" ${S.meses===n?"selected":""}>Últimos ${n} meses</option>`).join('')}
+        <option value="999" ${S.meses>=999?"selected":""}>Todos los meses</option>
       </select>
     </div>
-    <div class="cnt">Mostrando <strong>${filtered.length}</strong> de ${c.vecinos.length} vecinos</div>
+    <div class="cnt">Mostrando <strong>${filtered.length}</strong> de ${c.vecinos.length} vecinos · ${idxVisibles.length} meses</div>
     <div class="twrap"><table>
       <thead><tr>
         <th class="iz">No.</th><th class="iz" style="min-width:190px">Nombre</th><th>Estado</th>
-        ${ML.slice(0,mc).map(m=>`<th>${m}</th>`).join('')}
+        ${idxVisibles.map(i=>`<th>${ML[i]}</th>`).join('')}
         <th>Total</th><th>Meses</th>
       </tr></thead>
       <tbody>${rows}
         <tr class="ftot">
           <td class="iz" colspan="3" style="font-weight:700">💰 Total aportado por mes</td>
-          ${ing.slice(0,mc).map(v=>`<td>${v>0?fmt(v):'—'}</td>`).join('')}
-          <td class="dr">${fmt(ing.slice(0,mc).reduce((a,b)=>a+b,0))}</td><td></td>
+          ${idxVisibles.map(i=>`<td>${ing[i]>0?fmt(ing[i]):'—'}</td>`).join('')}
+          <td class="dr">${fmt(idxVisibles.reduce((a,i)=>a+ing[i],0))}</td><td></td>
         </tr>
       </tbody>
     </table></div>`;
