@@ -108,6 +108,7 @@ tr:last-child td{border-bottom:none;}
 .ffin-vd td{color:#2B5209;}
 .ffin-rj td{color:#8B1A1A;}
 .ffin-az td{background:#D6E8F8;color:#0C3D80;font-weight:700;}
+.ffin-am td{color:#854d0e;}
 .cneg{color:#8B1A1A!important;font-weight:700;}
 
 /* HISTORIAL */
@@ -156,6 +157,7 @@ tr:last-child td{border-bottom:none;}
     <button class="tab"     onclick="setTab('nota')">📋 Notas</button>
     <button class="tab"     onclick="setTab('vecinos')">👥 Vecinos y pagos</button>
     <button class="tab"     onclick="setTab('finanzas')">📊 Resumen financiero</button>
+    <button class="tab"     onclick="setTab('general')">🌐 Resumen general</button>
     <button class="tab"     onclick="setTab('correcciones')">🔧 Correcciones</button>
     <button class="tab"     onclick="setTab('validar')">🧾 Validar pagos</button>
   </div>
@@ -226,7 +228,7 @@ function calcularML(){
 let DB = {pagos:[], gastos:[], notas:[], vecinos:[]};
 let ML = calcularML();
 
-const CONCEPTOS_GASTO = ["Vigilancia","Mantenimiento","Limpieza","Jardinería","Electricidad","Plomería","Pintura","Material","Honorarios","Otro"];
+const CONCEPTOS_GASTO = ["Vigilancia","Uso de fondo de ahorro","Mantenimiento","Limpieza","Jardinería","Electricidad","Plomería","Pintura","Material","Honorarios","Otro"];
 
 // ════════════════════════════════════════════════════════════
 //  CATÁLOGO DE VECINOS — se llena desde Google Sheets (hoja Vecinos)
@@ -243,7 +245,7 @@ const CALLES = [
 // ════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
 // ════════════════════════════════════════════════════════════
-let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7};
+let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7, verFondo:true};
 
 // ════════════════════════════════════════════════════════════
 //  UTILIDADES
@@ -387,12 +389,12 @@ function rMets(){
 }
 
 function rTabs(){
-  const ids=['pago','gasto','nota','vecinos','finanzas','correcciones','validar'];
+  const ids=['pago','gasto','nota','vecinos','finanzas','general','correcciones','validar'];
   document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',S.tab===ids[i]));
 }
 
 function rCont(){
-  const m = {pago:rPago, gasto:rGasto, nota:rNota, vecinos:rVecinos, finanzas:rFinanzas, correcciones:rCorrecciones, validar:rValidar};
+  const m = {pago:rPago, gasto:rGasto, nota:rNota, vecinos:rVecinos, finanzas:rFinanzas, general:rGeneral, correcciones:rCorrecciones, validar:rValidar};
   document.getElementById('cont').innerHTML = m[S.tab]();
 }
 
@@ -662,30 +664,88 @@ function rVecinos(){
 }
 
 // ─── TAB: FINANZAS ────────────────────────────────────────────────────────────
+const CUOTA_MENSUAL = 350;
+
+// Cuenta cuántas casas ACTIVAS hay en una calle para un mes dado
+// (una casa cuenta como activa ese mes si tiene Aporta=Si o algún pago en cualquier mes)
+function casasActivas(c){
+  return c.vecinos.filter(v=>v.a).length;
+}
+
+// Detecta gastos que son "uso de fondo de ahorro" (para no contarlos como gasto normal)
+function esUsoFondo(g){
+  const con = String(g.Concepto||'').toLowerCase();
+  return con.indexOf('fondo de ahorro')>=0 || con.indexOf('uso de fondo')>=0;
+}
+
+// Meta del mes = gasto de vigilancia de ese mes específico
+function vigilanciaMes(calleId, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.gastos
+    .filter(g=>g.Calle===calleId && g.Mes===mp[0] && String(g.Año).slice(-2)===mp[1] && String(g.Concepto||'').toLowerCase().indexOf('vigilancia')>=0)
+    .reduce((s,g)=>s+Number(g.Monto),0);
+}
+
+function gastoMesReal(calleId, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.gastos
+    .filter(g=>g.Calle===calleId && g.Mes===mp[0] && String(g.Año).slice(-2)===mp[1] && !esUsoFondo(g))
+    .reduce((s,g)=>s+Number(g.Monto),0);
+}
+
+function usoFondoMes(calleId, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.gastos
+    .filter(g=>g.Calle===calleId && g.Mes===mp[0] && String(g.Año).slice(-2)===mp[1] && esUsoFondo(g))
+    .reduce((s,g)=>s+Number(g.Monto),0);
+}
+
 function rFinanzas(){
   const c=calle();
+  // META del mes = el gasto de vigilancia de ese mes (lo que hay que cubrir)
+  const meta=ML.map((_,i)=>vigilanciaMes(c.id,i));
+  // REUNIDO = solo lo aportado que corresponde a la cuota de ese mes
   const ing=ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMesIngreso(v,i),0));
-  const gasTotal=ML.map((_,i)=>gastoMes(c.id,i));
-  const saldo=ing.map((v,i)=>v-gasTotal[i]);
-  let acc=0; const caja=saldo.map(s=>{acc+=s;return acc;});
+  // FALTANTE = meta - reunido (lo que falta para cubrir la vigilancia)
+  const faltante=meta.map((m,i)=>Math.max(0, m-ing[i]));
+  const gasTotal=ML.map((_,i)=>gastoMesReal(c.id,i));
+  const usoFondo=ML.map((_,i)=>usoFondoMes(c.id,i));
+  // Saldo del mes = aportaciones - gastos + uso de fondo
+  const saldo=ing.map((v,i)=>v-gasTotal[i]+usoFondo[i]);
+  let acc=0; const fondo=saldo.map((s,i)=>{acc+=s-usoFondo[i];return acc;});
+  const tMeta=meta.reduce((a,b)=>a+b,0);
   const tI=ing.reduce((a,b)=>a+b,0), tG=gasTotal.reduce((a,b)=>a+b,0);
-  const si=c.vecinos.filter(v=>v.a).length;
-  const filas=[
-    {l:"💰 Aportaciones",   d:ing,     cls:"ffin-vd"},
-    {l:"💸 Gastos",         d:gasTotal,cls:"ffin-rj"},
-    {l:"📈 Saldo mensual",  d:saldo,   cls:""},
-    {l:"🏦 Caja acumulada", d:caja,    cls:"ffin-az"},
+  const tFalt=faltante.reduce((a,b)=>a+b,0);
+  const filasBase=[
+    {l:"🎯 Meta (vigilancia)", d:meta,     cls:"ffin-am"},
+    {l:"💰 Reunido del mes",   d:ing,      cls:"ffin-vd"},
+    {l:"⚠️ Falta para la meta",d:faltante, cls:"ffin-rj"},
+    {l:"🆘 Uso fondo ahorro",  d:usoFondo, cls:"ffin-rj"},
+    {l:"📈 Saldo del mes",     d:saldo,    cls:""},
   ];
+  const filaFondo={l:"🏦 Fondo de ahorro", d:fondo, cls:"ffin-az"};
+  const filas = S.verFondo ? [...filasBase, filaFondo] : filasBase;
   return `
-    <div class="mets" style="margin-bottom:18px">
-      <div class="met mvd"><div class="l">Total ingresos</div><div class="v" style="font-size:13px">${fmt(tI)}</div></div>
-      <div class="met mrj"><div class="l">Total gastos</div><div class="v" style="font-size:13px">${fmt(tG)}</div></div>
-      <div class="met maz"><div class="l">💼 Disponible en caja</div><div class="v" style="font-size:13px">${fmt(caja[caja.length-1])}</div></div>
-      <div class="met mam"><div class="l">Vecinos activos</div><div class="v">${si}</div></div>
+    <div class="mets" style="margin-bottom:14px">
+      <div class="met mam"><div class="l">🎯 Meta total</div><div class="v" style="font-size:13px">${fmt(tMeta)}</div></div>
+      <div class="met mvd"><div class="l">💰 Reunido total</div><div class="v" style="font-size:13px">${fmt(tI)}</div></div>
+      <div class="met mrj"><div class="l">⚠️ Falta total</div><div class="v" style="font-size:13px">${fmt(tFalt)}</div></div>
+      ${S.verFondo?`<div class="met maz"><div class="l">🏦 Fondo de ahorro</div><div class="v" style="font-size:13px">${fmt(fondo[fondo.length-1])}</div></div>`:''}
+    </div>
+    <div class="noprint" style="margin-bottom:14px">
+      <button class="btn ${S.verFondo?'btn-sec':'btn-az'}" onclick="toggleFondo()" style="width:auto;padding:10px 20px;font-size:13px">
+        ${S.verFondo?'🙈 Ocultar fondo de ahorro':'👁️ Mostrar fondo de ahorro'}
+      </button>
+      <span style="font-size:11px;color:#888;margin-left:10px">${S.verFondo?'El fondo es visible (para tu uso interno)':'El fondo está oculto (ideal para reportes a vecinos)'}</span>
+    </div>
+    <div style="background:#f0f6ff;border-left:4px solid #1a3a6b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:12px;color:#2c5282">
+      <strong>🎯 La meta de cada mes es el gasto de vigilancia</strong> que registras en "Registrar gasto" (concepto Vigilancia).
+      <strong>⚠️ Falta</strong> muestra cuánto se necesita para cubrir esa vigilancia con lo reunido del mes.
+      Si una calle no completa, registra el faltante como gasto con concepto <strong>"Uso de fondo de ahorro"</strong>.
     </div>
     <div class="fin-wrap twrap"><table>
       <thead><tr>
-        <th class="iz" style="min-width:145px">Concepto</th>
+        <th class="iz" style="min-width:160px">Concepto</th>
         ${ML.map(m=>`<th>${m}</th>`).join('')}
         <th>Total</th>
       </tr></thead>
@@ -698,6 +758,116 @@ function rFinanzas(){
 }
 
 
+
+
+// ─── TAB: RESUMEN GENERAL (las 3 calles juntas) ──────────────────────────────
+function rGeneral(){
+  // Calcular para cada calle y consolidar
+  const resumenCalles = CALLES.map(c=>{
+    const nAct = casasActivas(c);
+    const meta = ML.map((_,i)=>vigilanciaMes(c.id,i));
+    const ing = ML.map((_,i)=>c.vecinos.reduce((s,v)=>s+pagoMesIngresoCalle(c,v,i),0));
+    const gas = ML.map((_,i)=>gastoMesReal(c.id,i));
+    const uso = ML.map((_,i)=>usoFondoMes(c.id,i));
+    const falt = meta.map((m,i)=>Math.max(0,m-ing[i]));
+    const saldo = ing.map((v,i)=>v-gas[i]+uso[i]);
+    let acc=0; const fondo=saldo.map((s,i)=>{acc+=s-uso[i];return acc;});
+    return {
+      c, nAct,
+      tMeta: meta.reduce((a,b)=>a+b,0),
+      tIng: ing.reduce((a,b)=>a+b,0),
+      tGas: gas.reduce((a,b)=>a+b,0),
+      tFalt: falt.reduce((a,b)=>a+b,0),
+      fondo: fondo[fondo.length-1],
+      ing, gas, meta
+    };
+  });
+
+  const metaGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.meta[i],0));
+  const ingGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.ing[i],0));
+  const gasGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.gas[i],0));
+
+  const totMeta = resumenCalles.reduce((s,r)=>s+r.tMeta,0);
+  const totIng = resumenCalles.reduce((s,r)=>s+r.tIng,0);
+  const totGas = resumenCalles.reduce((s,r)=>s+r.tGas,0);
+  const totFalt = resumenCalles.reduce((s,r)=>s+r.tFalt,0);
+  const totFondo = resumenCalles.reduce((s,r)=>s+r.fondo,0);
+  const totCasas = resumenCalles.reduce((s,r)=>s+r.nAct,0);
+
+  const filasCalle = resumenCalles.map(r=>`
+    <tr>
+      <td class="iz" style="font-weight:700">${r.c.icon} ${r.c.label}</td>
+      <td>${r.nAct}</td>
+      <td style="color:#854d0e">${fmt(r.tMeta)}</td>
+      <td style="color:#2B5209;font-weight:700">${fmt(r.tIng)}</td>
+      <td style="color:#8B1A1A;font-weight:700">${r.tFalt>0?fmt(r.tFalt):'✓'}</td>
+      ${S.verFondo?`<td style="font-weight:700;color:${r.fondo>=0?'#1a3a6b':'#c00'}">${fmt(r.fondo)}</td>`:''}
+    </tr>`).join('');
+
+  return `
+    <div class="card azul" style="margin-bottom:14px">
+      <h2>🌐 Resumen General · Las 3 calles</h2>
+      <p style="font-size:12px;color:#555;line-height:1.6">Vista consolidada de todo el fraccionamiento: aportaciones, gastos y fondo de ahorro de Haciendas, Parque y Asís juntas.</p>
+    </div>
+    <div class="noprint" style="margin-bottom:14px">
+      <button class="btn ${S.verFondo?'btn-sec':'btn-az'}" onclick="toggleFondo()" style="width:auto;padding:10px 20px;font-size:13px">
+        ${S.verFondo?'🙈 Ocultar fondo de ahorro':'👁️ Mostrar fondo de ahorro'}
+      </button>
+      <span style="font-size:11px;color:#888;margin-left:10px">${S.verFondo?'El fondo es visible':'Oculto para reportes a vecinos'}</span>
+    </div>
+
+    <div class="mets" style="margin-bottom:18px">
+      <div class="met mgr"><div class="l">🏘️ Casas activas</div><div class="v">${totCasas}</div></div>
+      <div class="met mam"><div class="l">🎯 Meta total</div><div class="v" style="font-size:13px">${fmt(totMeta)}</div></div>
+      <div class="met mvd"><div class="l">💰 Reunido total</div><div class="v" style="font-size:13px">${fmt(totIng)}</div></div>
+      <div class="met mrj"><div class="l">⚠️ Falta total</div><div class="v" style="font-size:13px">${fmt(totFalt)}</div></div>
+      ${S.verFondo?`<div class="met maz"><div class="l">🏦 Fondo total</div><div class="v" style="font-size:13px">${fmt(totFondo)}</div></div>`:''}
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <h2 style="margin-bottom:12px">📊 Comparativo por calle</h2>
+      <div class="twrap"><table>
+        <thead><tr>
+          <th class="iz">Calle</th><th>Casas</th><th>Meta</th><th>Reunido</th><th>Falta</th>${S.verFondo?'<th>Fondo ahorro</th>':''}
+        </tr></thead>
+        <tbody>
+          ${filasCalle}
+          <tr class="ftot" style="border-top:3px solid #1a3a6b">
+            <td class="iz" style="font-weight:800">TOTAL GENERAL</td>
+            <td style="font-weight:800">${totCasas}</td>
+            <td style="font-weight:800;color:#854d0e">${fmt(totMeta)}</td>
+            <td style="font-weight:800;color:#2B5209">${fmt(totIng)}</td>
+            <td style="font-weight:800;color:#8B1A1A">${totFalt>0?fmt(totFalt):'✓'}</td>
+            ${S.verFondo?`<td style="font-weight:800;color:#1a3a6b">${fmt(totFondo)}</td>`:''}
+          </tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:12px">📅 General mes a mes (las 3 calles)</h2>
+      <div class="fin-wrap twrap"><table>
+        <thead><tr>
+          <th class="iz" style="min-width:150px">Concepto</th>
+          ${ML.map(m=>`<th>${m}</th>`).join('')}
+          <th>Total</th>
+        </tr></thead>
+        <tbody>
+          <tr class="ffin-am"><td class="iz" style="font-weight:700;padding:8px">🎯 Meta</td>${metaGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totMeta)}</td></tr>
+          <tr class="ffin-vd"><td class="iz" style="font-weight:700;padding:8px">💰 Reunido</td>${ingGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totIng)}</td></tr>
+          <tr class="ffin-rj"><td class="iz" style="font-weight:700;padding:8px">💸 Gastos</td>${gasGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totGas)}</td></tr>
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+// Helper para calcular pago de ingreso de una calle específica (no la seleccionada)
+function pagoMesIngresoCalle(c, v, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.pagos
+    .filter(p=>p.Calle===c.id && String(p.Numero)===String(v.num) && p.Mes===mp[0] && String(p.Año).slice(-2)===mp[1] && !noCuentaIngreso(p))
+    .reduce((s,p)=>s+Number(p.Monto),0);
+}
 
 // ─── TAB: VALIDAR PAGOS ───────────────────────────────────────────────────────
 function rValidar(){
@@ -1070,6 +1240,7 @@ function setTab(t){ S.tab=t; render(); }
 function setBusq(v){ S.busq=v; rCont(); }
 function setFiltro(v){ S.filtro=v; rCont(); }
 function setMeses(v){ S.meses=parseInt(v); rCont(); }
+function toggleFondo(){ S.verFondo=!S.verFondo; rCont(); }
 
 // ── INICIO ────────────────────────────────────────────────────
 render();      // Render inicial (tablas vacías hasta que cargue Sheets)
@@ -1078,3 +1249,4 @@ setInterval(cargar, 120000);
 </script>
 </body>
 </html>
+
