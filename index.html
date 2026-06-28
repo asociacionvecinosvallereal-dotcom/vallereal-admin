@@ -700,6 +700,26 @@ function usoFondoMes(calleId, i){
     .reduce((s,g)=>s+Number(g.Monto),0);
 }
 
+// Helper compartido: índices de los últimos N meses según el filtro S.meses
+function indicesVisibles(){
+  const total = ML.length;
+  const n = S.meses;
+  const desde = (n >= 999) ? 0 : Math.max(0, total - n);
+  const idx = [];
+  for(let i=desde; i<total; i++) idx.push(i);
+  return idx;
+}
+
+// Control reutilizable del filtro de meses
+function filtroMesesHTML(){
+  return `<div class="ctrl noprint" style="margin-bottom:14px">
+    <select onchange="setMeses(this.value)">
+      ${[4,7,10,14].map(n=>`<option value="${n}" ${S.meses===n?"selected":""}>Últimos ${n} meses</option>`).join('')}
+      <option value="999" ${S.meses>=999?"selected":""}>Todos los meses</option>
+    </select>
+  </div>`;
+}
+
 function rFinanzas(){
   const c=calle();
   // META del mes = el gasto de vigilancia de ese mes (lo que hay que cubrir)
@@ -717,41 +737,41 @@ function rFinanzas(){
   const tI=ing.reduce((a,b)=>a+b,0), tG=gasTotal.reduce((a,b)=>a+b,0);
   const tFalt=faltante.reduce((a,b)=>a+b,0);
   const filasBase=[
-    {l:"🎯 Meta (vigilancia)", d:meta,     cls:"ffin-am"},
-    {l:"💰 Reunido del mes",   d:ing,      cls:"ffin-vd"},
-    {l:"⚠️ Falta para la meta",d:faltante, cls:"ffin-rj"},
-    {l:"🆘 Uso fondo ahorro",  d:usoFondo, cls:"ffin-rj"},
-    {l:"📈 Saldo del mes",     d:saldo,    cls:""},
+    {l:"🛡️ Pago Vigilancia",       d:meta,     cls:"ffin-am"},
+    {l:"💰 Aportaciones del mes",   d:ing,      cls:"ffin-vd"},
+    {l:"⚠️ Falta para completar",   d:faltante, cls:"ffin-rj"},
+    {l:"🆘 Uso fondo ahorro",       d:usoFondo, cls:"ffin-rj"},
+    {l:"📈 Saldo del mes",          d:saldo,    cls:""},
   ];
   const filaFondo={l:"🏦 Fondo de ahorro", d:fondo, cls:"ffin-az"};
   const filas = S.verFondo ? [...filasBase, filaFondo] : filasBase;
+  // Filtro de meses: mostrar solo los índices visibles
+  const idx = indicesVisibles();
   return `
+    <div class="card azul" style="margin-bottom:14px">
+      <h2>📊 Resumen financiero · ${calle().icon} ${calle().label}</h2>
+    </div>
     <div class="mets" style="margin-bottom:14px">
-      <div class="met mam"><div class="l">🎯 Meta total</div><div class="v" style="font-size:13px">${fmt(tMeta)}</div></div>
-      <div class="met mvd"><div class="l">💰 Reunido total</div><div class="v" style="font-size:13px">${fmt(tI)}</div></div>
+      <div class="met mam"><div class="l">🛡️ Pago Vigilancia total</div><div class="v" style="font-size:13px">${fmt(tMeta)}</div></div>
+      <div class="met mvd"><div class="l">💰 Aportaciones total</div><div class="v" style="font-size:13px">${fmt(tI)}</div></div>
       <div class="met mrj"><div class="l">⚠️ Falta total</div><div class="v" style="font-size:13px">${fmt(tFalt)}</div></div>
       ${S.verFondo?`<div class="met maz"><div class="l">🏦 Fondo de ahorro</div><div class="v" style="font-size:13px">${fmt(fondo[fondo.length-1])}</div></div>`:''}
     </div>
-    <div class="noprint" style="margin-bottom:14px">
+    <div class="noprint" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      ${filtroMesesHTML()}
       <button class="btn ${S.verFondo?'btn-sec':'btn-az'}" onclick="toggleFondo()" style="width:auto;padding:10px 20px;font-size:13px">
         ${S.verFondo?'🙈 Ocultar fondo de ahorro':'👁️ Mostrar fondo de ahorro'}
       </button>
-      <span style="font-size:11px;color:#888;margin-left:10px">${S.verFondo?'El fondo es visible (para tu uso interno)':'El fondo está oculto (ideal para reportes a vecinos)'}</span>
-    </div>
-    <div style="background:#f0f6ff;border-left:4px solid #1a3a6b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:12px;color:#2c5282">
-      <strong>🎯 La meta de cada mes es el gasto de vigilancia</strong> que registras en "Registrar gasto" (concepto Vigilancia).
-      <strong>⚠️ Falta</strong> muestra cuánto se necesita para cubrir esa vigilancia con lo reunido del mes.
-      Si una calle no completa, registra el faltante como gasto con concepto <strong>"Uso de fondo de ahorro"</strong>.
     </div>
     <div class="fin-wrap twrap"><table>
       <thead><tr>
         <th class="iz" style="min-width:160px">Concepto</th>
-        ${ML.map(m=>`<th>${m}</th>`).join('')}
+        ${idx.map(i=>`<th>${ML[i]}</th>`).join('')}
         <th>Total</th>
       </tr></thead>
       <tbody>${filas.map(f=>`<tr class="${f.cls}">
         <td class="iz" style="font-weight:700;padding:8px">${f.l}</td>
-        ${f.d.map(v=>`<td class="${v<0?'cneg':''}" style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}
+        ${idx.map(i=>`<td class="${f.d[i]<0?'cneg':''}" style="padding:7px 5px">${f.d[i]===0?'—':fmt(f.d[i])}</td>`).join('')}
         <td class="dr" style="font-weight:700;padding:8px">${fmt(f.d.reduce((a,b)=>a+b,0))}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
@@ -785,7 +805,8 @@ function rGeneral(){
 
   const metaGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.meta[i],0));
   const ingGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.ing[i],0));
-  const gasGen = ML.map((_,i)=>resumenCalles.reduce((s,r)=>s+r.gas[i],0));
+  // Diferencia = Pago Vigilancia - Aportaciones (positivo = falta, negativo = sobra)
+  const diffGen = metaGen.map((m,i)=>m-ingGen[i]);
 
   const totMeta = resumenCalles.reduce((s,r)=>s+r.tMeta,0);
   const totIng = resumenCalles.reduce((s,r)=>s+r.tIng,0);
@@ -794,6 +815,7 @@ function rGeneral(){
   const totFondo = resumenCalles.reduce((s,r)=>s+r.fondo,0);
   const totCasas = resumenCalles.reduce((s,r)=>s+r.nAct,0);
 
+  const idxG = indicesVisibles();
   const filasCalle = resumenCalles.map(r=>`
     <tr>
       <td class="iz" style="font-weight:700">${r.c.icon} ${r.c.label}</td>
@@ -846,18 +868,20 @@ function rGeneral(){
 
     <div class="card">
       <h2 style="margin-bottom:12px">📅 General mes a mes (las 3 calles)</h2>
+      ${filtroMesesHTML()}
       <div class="fin-wrap twrap"><table>
         <thead><tr>
-          <th class="iz" style="min-width:150px">Concepto</th>
-          ${ML.map(m=>`<th>${m}</th>`).join('')}
+          <th class="iz" style="min-width:170px">Concepto</th>
+          ${idxG.map(i=>`<th>${ML[i]}</th>`).join('')}
           <th>Total</th>
         </tr></thead>
         <tbody>
-          <tr class="ffin-am"><td class="iz" style="font-weight:700;padding:8px">🎯 Meta</td>${metaGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totMeta)}</td></tr>
-          <tr class="ffin-vd"><td class="iz" style="font-weight:700;padding:8px">💰 Reunido</td>${ingGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totIng)}</td></tr>
-          <tr class="ffin-rj"><td class="iz" style="font-weight:700;padding:8px">💸 Gastos</td>${gasGen.map(v=>`<td style="padding:7px 5px">${v===0?'—':fmt(v)}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totGas)}</td></tr>
+          <tr class="ffin-am"><td class="iz" style="font-weight:700;padding:8px">🛡️ Pago de Vigilancia</td>${idxG.map(i=>`<td style="padding:7px 5px">${metaGen[i]===0?'—':fmt(metaGen[i])}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totMeta)}</td></tr>
+          <tr class="ffin-vd"><td class="iz" style="font-weight:700;padding:8px">💰 Aportaciones</td>${idxG.map(i=>`<td style="padding:7px 5px">${ingGen[i]===0?'—':fmt(ingGen[i])}</td>`).join('')}<td class="dr" style="font-weight:700">${fmt(totIng)}</td></tr>
+          <tr class="ffin-rj"><td class="iz" style="font-weight:700;padding:8px">⚖️ Diferencia</td>${idxG.map(i=>`<td class="${diffGen[i]>0?'cneg':''}" style="padding:7px 5px">${diffGen[i]===0?'✓':(diffGen[i]>0?'-'+fmt(diffGen[i]):'+'+fmt(-diffGen[i]))}</td>`).join('')}<td class="dr" style="font-weight:700">${(totMeta-totIng)>0?'-'+fmt(totMeta-totIng):'+'+fmt(totIng-totMeta)}</td></tr>
         </tbody>
       </table></div>
+      <div style="font-size:11px;color:#888;margin-top:8px">⚖️ Diferencia: <strong style="color:#8B1A1A">-monto</strong> = falta para cubrir vigilancia · <strong style="color:#2B5209">+monto</strong> = sobró · <strong>✓</strong> = exacto</div>
     </div>`;
 }
 
@@ -1249,4 +1273,3 @@ setInterval(cargar, 120000);
 </script>
 </body>
 </html>
-
