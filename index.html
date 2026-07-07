@@ -1004,7 +1004,13 @@ function iniciarEnvios(){
 }
 
 function mostrarSiguienteEnvio(){
-  const modal = document.getElementById('modalEnvio');
+  let modal = document.getElementById('modalEnvio');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'modalEnvio';
+    modal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:2100;align-items:center;justify-content:center;padding:20px';
+    document.body.appendChild(modal);
+  }
   if(_colaIdx >= _colaEnvio.length){
     // Terminó
     modal.innerHTML = `<div style="background:white;border-radius:16px;padding:36px;max-width:420px;text-align:center">
