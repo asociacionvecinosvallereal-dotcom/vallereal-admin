@@ -304,10 +304,12 @@ function construirCatalogo(){
     if(VECINOS_DB[calle]){
       const aportaSheet = String(row.Aporta||'').toLowerCase()==='si';
       const tienePago = casasConPago[calle+'|'+num] === true;
+      const dadoBaja = String(row.Baja||'').toLowerCase()==='si';
       VECINOS_DB[calle].push({
         num: num,
         n: row.Nombre||('Casa '+num),
-        a: aportaSheet || tienePago,
+        a: !dadoBaja && (aportaSheet || tienePago),  // baja = inactivo aunque tenga pagos
+        baja: dadoBaja,
         tel: telPorCasa[calle+'|'+num] || ''
       });
     }
@@ -641,7 +643,9 @@ function rVecinos(){
     return `<tr>
       <td class="iz" style="font-weight:700">${v.num}</td>
       <td class="iz">${v.n}</td>
-      <td>${v.a?'<span class="bsi">✓ Activo</span>':'<span class="bno">✗ No aporta</span>'}</td>
+      <td>${v.baja?'<span class="bno">🚫 Baja</span>':(v.a?'<span class="bsi">✓ Activo</span>':'<span class="bno">✗ No aporta</span>')}
+        <button class="noprint" onclick="darBaja('${v.num}','${v.n.replace(/'/g,"")}',${v.baja?'true':'false'})" style="margin-left:6px;padding:3px 8px;font-size:10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer">${v.baja?'Reactivar':'Dar de baja'}</button>
+      </td>
       ${pagos.map(pv=>pv===0?`<td><span class="bnad">—</span></td>`:pv===350?`<td><span class="bpag">$350</span></td>`:`<td><span class="bpar">${fmt(pv)}</span></td>`).join('')}
       <td class="dr" style="font-weight:700;color:${total>0?'#2B5209':'#aaa'}">${fmt(total)}</td>
       <td style="color:#888">${mp}</td>
@@ -679,6 +683,20 @@ function rVecinos(){
 
 // ─── TAB: FINANZAS ────────────────────────────────────────────────────────────
 const CUOTA_MENSUAL = 350;
+
+// ═══════════════════════════════════════════════════════════════
+//  MENSAJE DE RECORDATORIO — EDITA AQUÍ EL TEXTO SI LO NECESITAS
+//  Variables disponibles: {nombre} {n} {meses} {lista} {cuota}
+// ═══════════════════════════════════════════════════════════════
+const MSG_RECORDATORIO =
+  'Valle Real - Recordatorio de aportacion\n' +
+  'Hola, {nombre}.\n\n' +
+  'De acuerdo con nuestros registros, tienes {n} {meses} pendientes:\n' +
+  '{lista}\n' +
+  'Cuota mensual: ${cuota} MXN.\n\n' +
+  'Si ya realizaste tu pago, puedes omitir este mensaje. Este es un recordatorio enviado de forma automatica.\n\n' +
+  'Si has decidido dejar de aportar, te agradeceriamos que nos lo informaras y, si es posible, nos compartieras el motivo. Si previamente lo comentaste con los representantes vecinales, tambien agradeceremos saberlo.\n\n' +
+  'Gracias por tu atencion!';
 
 // Cuenta cuántas casas ACTIVAS hay en una calle para un mes dado
 // (una casa cuenta como activa ese mes si tiene Aporta=Si o algún pago en cualquier mes)
@@ -915,21 +933,39 @@ let _colaIdx = 0;      // índice actual en la cola
 // Calcula los meses que un vecino NO ha pagado (hasta el mes actual)
 function mesesAdeudados(v){
   const hoy = new Date();
-  const adeudos = [];
+  const mesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  // Índices de meses hasta hoy (no futuros)
+  const idxHasta = [];
   for(let i=0; i<ML.length; i++){
     const mp = ML[i].split(' ');
-    const mIdx = ABREV_MES.indexOf(mp[0]);
-    const anio = 2000 + parseInt(mp[1]);
-    // Solo meses hasta el mes actual (no futuros)
-    const fechaMes = new Date(anio, mIdx, 1);
-    const mesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    if(fechaMes > mesActual) continue;
-    // Si no pagó ese mes (o pagó menos de $350), lo debe
+    const fechaMes = new Date(2000+parseInt(mp[1]), ABREV_MES.indexOf(mp[0]), 1);
+    if(fechaMes <= mesActual) idxHasta.push(i);
+  }
+  // Recorrer de más reciente a más antiguo; parar al encontrar un pago
+  // (si retomó pagos, los huecos anteriores no se le reclaman)
+  const adeudos = [];
+  for(let k=idxHasta.length-1; k>=0; k--){
+    const i = idxHasta[k];
     if(pagoMes(v, i) < CUOTA_MENSUAL){
-      adeudos.push(ML[i]);
+      adeudos.unshift(ML[i]);
+    } else {
+      break; // encontró un mes pagado: dejar de reclamar hacia atrás
     }
   }
   return adeudos;
+}
+
+// Marca o quita la baja de un vecino (escribe en hoja Vecinos)
+async function darBaja(num, nombre, estaBaja){
+  const nuevoEstado = estaBaja ? 'No' : 'Si';
+  const accion = estaBaja ? 'reactivar' : 'dar de baja';
+  if(!confirm('¿Confirmas '+accion+' a la casa '+num+' ('+nombre+')?')) return;
+  try{
+    await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({tipo:'baja_vecino', calle:calle().id, numero:num, baja:nuevoEstado})});
+    await new Promise(r=>setTimeout(r,800));
+    cargar();
+  }catch(e){ alert('Error: '+e.message); }
 }
 
 function rRecordatorios(){
@@ -1052,13 +1088,13 @@ function enviarYAvanzar(){
   if(tel.length===10) tel = '52'+tel;
   const nombre = (x.v.n||'').split(' ')[0];
   const n = x.adeudos.length;
-  const lista = x.adeudos.slice(0,4).join(', ');
-  const msg =
-    '*Valle Real - Recordatorio de aportacion*\n\n' +
-    'Hola ' + nombre + ', te recordamos que tienes ' + n + ' ' + (n===1?'mes':'meses') + ' pendientes de tu aportacion vecinal:\n\n' +
-    lista + (n>4?'...':'') + '\n\n' +
-    'Cuota mensual: $' + CUOTA_MENSUAL + ' MXN\n\n' +
-    'Puedes registrar tu pago en la app. Gracias por mantenerte al corriente.';
+  const lista = x.adeudos.slice(0,4).join(' y ');
+  const msg = MSG_RECORDATORIO
+    .replace('{nombre}', nombre)
+    .replace('{n}', n)
+    .replace('{meses}', n===1?'mes':'meses')
+    .replace('{lista}', lista)
+    .replace('{cuota}', CUOTA_MENSUAL);
   window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg), '_blank');
   _colaIdx++;
   setTimeout(mostrarSiguienteEnvio, 600);
