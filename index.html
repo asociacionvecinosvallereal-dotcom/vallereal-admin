@@ -158,6 +158,7 @@ tr:last-child td{border-bottom:none;}
     <button class="tab"     onclick="setTab('vecinos')">👥 Vecinos y pagos</button>
     <button class="tab"     onclick="setTab('finanzas')">📊 Resumen financiero</button>
     <button class="tab"     onclick="setTab('general')">🌐 Resumen general</button>
+    <button class="tab"     onclick="setTab('recordatorios')">📢 Recordatorios</button>
     <button class="tab"     onclick="setTab('correcciones')">🔧 Correcciones</button>
     <button class="tab"     onclick="setTab('validar')">🧾 Validar pagos</button>
   </div>
@@ -288,11 +289,14 @@ function gastoMesExtra(calleId, i){ return gastoMes(calleId, i); }
 // Construye el catálogo de vecinos desde la hoja Vecinos de Sheets
 function construirCatalogo(){
   VECINOS_DB = {haciendas:[], parque:[], asis:[]};
-  // Construir set de casas que tienen al menos un pago real registrado
   const casasConPago = {};
+  const telPorCasa = {};
   (DB.pagos||[]).forEach(function(p){
     const k = String(p.Calle||'').toLowerCase().trim() + '|' + String(p.Numero||'').trim();
     if(Number(p.Monto) > 0) casasConPago[k] = true;
+    // Guardar el teléfono más reciente de esa casa
+    const tel = String(p.TelefonoVecino||p.Telefono||'').replace(/[^0-9]/g,'');
+    if(tel && tel.length>=10) telPorCasa[k] = tel;
   });
   (DB.vecinos||[]).forEach(function(row){
     const calle = String(row.Calle||'').toLowerCase().trim();
@@ -303,7 +307,8 @@ function construirCatalogo(){
       VECINOS_DB[calle].push({
         num: num,
         n: row.Nombre||('Casa '+num),
-        a: aportaSheet || tienePago  // Activo si lo dice la hoja O si tiene pagos
+        a: aportaSheet || tienePago,
+        tel: telPorCasa[calle+'|'+num] || ''
       });
     }
   });
@@ -389,12 +394,12 @@ function rMets(){
 }
 
 function rTabs(){
-  const ids=['pago','gasto','nota','vecinos','finanzas','general','correcciones','validar'];
+  const ids=['pago','gasto','nota','vecinos','finanzas','general','recordatorios','correcciones','validar'];
   document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',S.tab===ids[i]));
 }
 
 function rCont(){
-  const m = {pago:rPago, gasto:rGasto, nota:rNota, vecinos:rVecinos, finanzas:rFinanzas, general:rGeneral, correcciones:rCorrecciones, validar:rValidar};
+  const m = {pago:rPago, gasto:rGasto, nota:rNota, vecinos:rVecinos, finanzas:rFinanzas, general:rGeneral, recordatorios:rRecordatorios, correcciones:rCorrecciones, validar:rValidar};
   document.getElementById('cont').innerHTML = m[S.tab]();
 }
 
@@ -893,6 +898,158 @@ function pagoMesIngresoCalle(c, v, i){
     .reduce((s,p)=>s+Number(p.Monto),0);
 }
 
+
+// ─── TAB: RECORDATORIOS DE ADEUDO ────────────────────────────────────────────
+let _colaEnvio = [];   // vecinos morosos por enviar
+let _colaIdx = 0;      // índice actual en la cola
+
+// Calcula los meses que un vecino NO ha pagado (hasta el mes actual)
+function mesesAdeudados(v){
+  const hoy = new Date();
+  const adeudos = [];
+  for(let i=0; i<ML.length; i++){
+    const mp = ML[i].split(' ');
+    const mIdx = ABREV_MES.indexOf(mp[0]);
+    const anio = 2000 + parseInt(mp[1]);
+    // Solo meses hasta el mes actual (no futuros)
+    const fechaMes = new Date(anio, mIdx, 1);
+    const mesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    if(fechaMes > mesActual) continue;
+    // Si no pagó ese mes (o pagó menos de $350), lo debe
+    if(pagoMes(v, i) < CUOTA_MENSUAL){
+      adeudos.push(ML[i]);
+    }
+  }
+  return adeudos;
+}
+
+function rRecordatorios(){
+  const c = calle();
+  // Solo vecinos activos con teléfono y con adeudo
+  const morosos = c.vecinos
+    .filter(v => v.a)
+    .map(v => ({v, adeudos: mesesAdeudados(v)}))
+    .filter(x => x.adeudos.length >= 1);
+
+  const conTel = morosos.filter(x => x.v.tel);
+  const sinTel = morosos.filter(x => !x.v.tel);
+
+  const listaMorosos = conTel.map((x,i)=>{
+    const nAdeudo = x.adeudos.length;
+    const alerta = nAdeudo >= 4;
+    return `<tr>
+      <td class="iz" style="font-weight:700">${x.v.num}</td>
+      <td class="iz">${x.v.n}</td>
+      <td style="text-align:center;font-weight:700;color:${alerta?'#c00':'#854d0e'}">${nAdeudo}${alerta?' ⚠️':''}</td>
+      <td style="font-size:11px;color:#666">${x.adeudos.slice(0,4).join(', ')}${nAdeudo>4?'...':''}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="card azul" style="margin-bottom:14px">
+      <h2>📢 Recordatorios de adeudo · ${c.icon} ${c.label}</h2>
+      <p style="font-size:12px;color:#555;line-height:1.6">Env&iacute;a un recordatorio por WhatsApp a los vecinos con mensualidades pendientes. El sistema te lleva uno por uno; t&uacute; presionas enviar en cada mensaje.</p>
+    </div>
+
+    <div class="mets" style="margin-bottom:16px">
+      <div class="met mam"><div class="l">📋 Con adeudo</div><div class="v">${morosos.length}</div></div>
+      <div class="met mvd"><div class="l">📱 Con WhatsApp</div><div class="v">${conTel.length}</div></div>
+      <div class="met mgr"><div class="l">❓ Sin teléfono</div><div class="v">${sinTel.length}</div></div>
+    </div>
+
+    ${conTel.length===0 ? '<div class="card"><p class="empty">No hay vecinos con adeudo y WhatsApp registrado en esta calle. 🎉</p></div>' : `
+    <div class="noprint" style="margin-bottom:16px">
+      <button class="btn btn-az" onclick="iniciarEnvios()" style="width:100%;background:#25D366;font-size:16px;padding:18px">
+        📱 Iniciar env&iacute;o de recordatorios (${conTel.length} vecinos)
+      </button>
+      <div style="font-size:11px;color:#888;margin-top:8px;text-align:center">Se abrir&aacute; WhatsApp con cada vecino, uno por uno. T&uacute; presionas enviar.</div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:12px">Vecinos con adeudo (${conTel.length})</h2>
+      <div class="twrap"><table>
+        <thead><tr><th class="iz">Casa</th><th class="iz">Nombre</th><th>Meses</th><th class="iz">Adeudo</th></tr></thead>
+        <tbody>${listaMorosos}</tbody>
+      </table></div>
+      <div style="font-size:11px;color:#888;margin-top:8px">⚠️ = 4 o más meses (se considera que ya no continuará aportando)</div>
+    </div>`}
+
+    ${sinTel.length>0 ? `<div class="card" style="margin-top:14px;background:#fff8e6">
+      <h2 style="margin-bottom:8px;font-size:14px">❓ Con adeudo pero sin teléfono (${sinTel.length})</h2>
+      <p style="font-size:12px;color:#713f12">${sinTel.map(x=>x.v.num+' ('+x.v.n+')').join(' · ')}</p>
+    </div>` : ''}`;
+}
+
+// Prepara la cola y abre el primer WhatsApp
+function iniciarEnvios(){
+  const c = calle();
+  _colaEnvio = c.vecinos
+    .filter(v => v.a && v.tel)
+    .map(v => ({v, adeudos: mesesAdeudados(v)}))
+    .filter(x => x.adeudos.length >= 1);
+  _colaIdx = 0;
+  if(_colaEnvio.length===0){ alert('No hay vecinos con adeudo y teléfono.'); return; }
+  mostrarSiguienteEnvio();
+}
+
+function mostrarSiguienteEnvio(){
+  const modal = document.getElementById('modalEnvio');
+  if(_colaIdx >= _colaEnvio.length){
+    // Terminó
+    modal.innerHTML = `<div style="background:white;border-radius:16px;padding:36px;max-width:420px;text-align:center">
+      <div style="font-size:60px">✅</div>
+      <h3 style="color:#1a3a6b;margin:14px 0">¡Env&iacute;os completados!</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:20px">Revisaste los ${_colaEnvio.length} recordatorios de esta calle.</p>
+      <button class="btn btn-az" onclick="cerrarEnvio()">Cerrar</button>
+    </div>`;
+    modal.style.display='flex';
+    return;
+  }
+  const x = _colaEnvio[_colaIdx];
+  const nombre = (x.v.n||'').split(' ')[0];
+  const n = x.adeudos.length;
+  const lista = x.adeudos.slice(0,4).join(', ');
+
+  modal.innerHTML = `<div style="background:white;border-radius:16px;padding:30px;max-width:440px;width:90%">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:13px;color:#888">Vecino ${_colaIdx+1} de ${_colaEnvio.length}</div>
+      <h3 style="color:#1a3a6b;margin-top:4px">Casa ${x.v.num} · ${x.v.n}</h3>
+    </div>
+    <div style="background:#f7fafc;border-radius:10px;padding:16px;font-size:13px;color:#4a5568;margin-bottom:18px">
+      <strong>Debe ${n} ${n===1?'mes':'meses'}:</strong><br>${lista}${n>4?'...':''}
+    </div>
+    <button class="btn" onclick="enviarYAvanzar()" style="width:100%;background:#25D366;color:white;font-weight:700;font-size:16px;padding:16px;margin-bottom:10px">
+      📱 Abrir WhatsApp y enviar
+    </button>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-sec" onclick="saltarEnvio()" style="flex:1">Saltar</button>
+      <button class="btn btn-sec" onclick="cerrarEnvio()" style="flex:1">Terminar</button>
+    </div>
+  </div>`;
+  modal.style.display='flex';
+}
+
+function enviarYAvanzar(){
+  const x = _colaEnvio[_colaIdx];
+  let tel = String(x.v.tel).replace(/[^0-9]/g,'');
+  if(tel.length===10) tel = '52'+tel;
+  const nombre = (x.v.n||'').split(' ')[0];
+  const n = x.adeudos.length;
+  const lista = x.adeudos.slice(0,4).join(', ');
+  const msg =
+    '*Valle Real - Recordatorio de aportacion*\n\n' +
+    'Hola ' + nombre + ', te recordamos que tienes ' + n + ' ' + (n===1?'mes':'meses') + ' pendientes de tu aportacion vecinal:\n\n' +
+    lista + (n>4?'...':'') + '\n\n' +
+    'Cuota mensual: $' + CUOTA_MENSUAL + ' MXN\n\n' +
+    'Puedes registrar tu pago en la app. Gracias por mantenerte al corriente.';
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(msg), '_blank');
+  _colaIdx++;
+  setTimeout(mostrarSiguienteEnvio, 600);
+}
+
+function saltarEnvio(){ _colaIdx++; mostrarSiguienteEnvio(); }
+function cerrarEnvio(){ document.getElementById('modalEnvio').style.display='none'; }
+
 // ─── TAB: VALIDAR PAGOS ───────────────────────────────────────────────────────
 function rValidar(){
   const c = calle();
@@ -959,6 +1116,7 @@ function rValidar(){
     </div>
 
     <!-- Modal recibo -->
+    <div id="modalEnvio" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);z-index:2100;align-items:center;justify-content:center;padding:20px"></div>
     <div id="modalRecibo" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:2000;align-items:center;justify-content:center;padding:20px">
       <div style="background:white;border-radius:12px;padding:0;max-width:480px;width:100%;max-height:90vh;overflow-y:auto">
         <div id="reciboContenido" style="padding:28px">
