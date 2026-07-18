@@ -318,6 +318,9 @@ function construirCatalogo(){
 }
 
 async function cargar(){
+  // Si el recibo está abierto, no re-renderizar (evita perder la pantalla)
+  const _mr = document.getElementById('modalRecibo');
+  if(_mr && _mr.style.display === 'flex') return;
   document.getElementById('syncInfo').innerHTML = '<span class="spin"></span>Cargando…';
   try {
     const controller = new AbortController();
@@ -689,12 +692,13 @@ const CUOTA_MENSUAL = 350;
 //  Variables disponibles: {nombre} {n} {meses} {lista} {cuota}
 // ═══════════════════════════════════════════════════════════════
 const MSG_RECORDATORIO =
-  '*Recordatorio de aportacion pendiente*\n' +
+  'Valle Real - Recordatorio de aportacion\n' +
   'Hola, {nombre}.\n\n' +
-  'De acuerdo con nuestros registros, aun tiene {n} {meses} pendientes:\n' +
+  'De acuerdo con nuestros registros, tienes {n} {meses} pendientes:\n' +
   '{lista}\n' +
   'Cuota mensual: ${cuota} MXN.\n\n' +
-  'Si ya realizaste tu pago, puedes omitir este mensaje (mensaje generado de forma automatica).\n\n' +
+  'Si ya realizaste tu pago, puedes omitir este mensaje. Este es un recordatorio enviado de forma automatica.\n\n' +
+  'Si has decidido dejar de aportar, te agradeceriamos que nos lo informaras y, si es posible, nos compartieras el motivo. Si previamente lo comentaste con los representantes vecinales, tambien agradeceremos saberlo.\n\n' +
   'Gracias por tu atencion!';
 
 // Cuenta cuántas casas ACTIVAS hay en una calle para un mes dado
@@ -1114,6 +1118,24 @@ function rValidar(){
     return calle_ok && es_pendiente && !es_historico;
   });
 
+  // Pagos ya validados (para poder reenviar la confirmación si se cerró por error)
+  const validados = DB.pagos.filter(p => {
+    const fecha = String(p.Fecha||'').toLowerCase();
+    const es_historico = fecha.includes('histor') || fecha.includes('migrado');
+    const estado = String(p.Estado||'').toLowerCase().trim();
+    return p.Calle === c.id && estado.includes('validado') && !es_historico;
+  }).slice(-10).reverse();
+
+  const filasVal = validados.length === 0
+    ? `<tr><td colspan="5" class="empty">Aún no hay pagos validados recientes.</td></tr>`
+    : validados.map(p => `<tr>
+        <td class="iz" style="font-weight:700">${p.Numero}</td>
+        <td class="iz">${p.Nombre}</td>
+        <td>${p.Mes} ${p.Año}</td>
+        <td style="font-weight:700;color:#2B5209">$${Math.round(Number(p.Monto)).toLocaleString('es-MX')}</td>
+        <td><button class="btn" style="padding:5px 10px;font-size:11px;width:auto;background:#25D366;color:white;font-weight:700" onclick="reabrirRecibo('${p._fila}')">📱 Recibo / WhatsApp</button></td>
+      </tr>`).join('');
+
   const filas = pendientes.length === 0
     ? `<tr><td colspan="8" class="empty">✅ No hay pagos pendientes de validar para ${c.label}.<br>Todos los pagos están al corriente.</td></tr>`
     : pendientes.map((p,i) => {
@@ -1155,6 +1177,15 @@ function rValidar(){
         </tr></thead>
         <tbody>${filas}</tbody>
       </table>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2 style="margin-bottom:10px;font-size:15px">✅ Validados recientemente</h2>
+      <p style="font-size:11.5px;color:#666;margin-bottom:10px">Si cerraste el recibo por error, aquí puedes volver a abrirlo y enviar la confirmación por WhatsApp.</p>
+      <div class="twrap"><table>
+        <thead><tr><th class="iz">Casa</th><th class="iz">Nombre</th><th>Mes</th><th>Monto</th><th>Acción</th></tr></thead>
+        <tbody>${filasVal}</tbody>
+      </table></div>
     </div>
 
     <!-- Modal comprobante -->
@@ -1334,6 +1365,27 @@ function verComprobante(fila){
   modal.style.display='flex';
 }
 
+// Reabre el recibo de un pago ya validado (para reenviar confirmación)
+function reabrirRecibo(fila){
+  const p = DB.pagos.find(x => x._fila == fila);
+  if(!p){ alert('No se encontró el pago.'); return; }
+  _reciboData = {
+    folio: 'VR-'+String(p._fila).padStart(4,'0'),
+    calle: calle().label,
+    calleIco: calle().icon,
+    casa: p.Numero,
+    nombre: p.Nombre,
+    mes: p.Mes+' '+p.Año,
+    monto: Number(p.Monto),
+    tipoPago: p.TipoPago||'No especificado',
+    nota: p.Nota||'',
+    fecha: new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'}),
+    responsable: String(p.ValidadoPor||'').split(' · ')[0] || 'Responsable',
+    telefono: p.TelefonoVecino || p.Telefono || '',
+  };
+  mostrarRecibo(_reciboData);
+}
+
 async function validarPago(fila, idx){
   const p = DB.pagos.find(x => x._fila == fila);
   if(!p) return;
@@ -1366,7 +1418,7 @@ async function validarPago(fila, idx){
       telefono: p.TelefonoVecino || p.Telefono || '',
     };
     mostrarRecibo(_reciboData);
-    setTimeout(()=> cargar(), 2000);
+    // No recargamos aquí: la recarga ocurre al cerrar el recibo (evita que se borre)
   }catch(e){
     msgEl.className='fmsg err';
     msgEl.textContent='❌ Error al validar: '+e.message;
@@ -1445,6 +1497,7 @@ function imprimirRecibo(){
 function cerrarRecibo(){
   const m = document.getElementById('modalRecibo');
   if(m) m.style.display='none';
+  cargar();  // refresca datos al cerrar
 }
 
 // Envía confirmación por WhatsApp al vecino con mensaje pre-cargado
