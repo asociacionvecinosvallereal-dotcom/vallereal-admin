@@ -1249,10 +1249,18 @@ let _reciboData = {};
 function mesesPermitidosCorr(){
   const n = S.mesesCorr;
   if(n >= 999) return null;  // null = todos
+  // Anclar al MES ACTUAL (no al final de ML, que llega hasta 3 meses adelante)
+  const hoy = new Date();
+  let a = hoy.getFullYear(), m = hoy.getMonth() - (n - 1);
+  while(m < 0){ m += 12; a--; }
+  const desde = new Date(a, m, 1);   // inicio de la ventana
   const set = {};
-  ML.slice(Math.max(0, ML.length - n)).forEach(function(m){
-    const mp = m.split(' ');
-    set[mp[0] + '|' + mp[1]] = true;
+  ML.forEach(function(ml){
+    const mp = ml.split(' ');
+    const f = new Date(2000 + parseInt(mp[1]), ABREV_MES.indexOf(mp[0]), 1);
+    // Incluye el mes actual, los n-1 anteriores y también los meses futuros
+    // (para no ocultar pagos adelantados registrados recientemente)
+    if(f >= desde) set[mp[0] + '|' + mp[1]] = true;
   });
   return set;
 }
