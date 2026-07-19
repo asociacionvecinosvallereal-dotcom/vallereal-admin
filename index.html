@@ -246,7 +246,7 @@ const CALLES = [
 // ════════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
 // ════════════════════════════════════════════════════════════
-let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7, verFondo:true};
+let S = {ci:0, tab:"pago", busq:"", filtro:"todos", meses:7, verFondo:true, mesesCorr:1};
 
 // ════════════════════════════════════════════════════════════
 //  UTILIDADES
@@ -317,6 +317,23 @@ function construirCatalogo(){
   CALLES.forEach(function(c){ c.vecinos = VECINOS_DB[c.id]||[]; });
 }
 
+// ¿El usuario está capturando algo? (formularios con datos o modal de edición abierto)
+function capturaEnCurso(){
+  const me = document.getElementById('modalEdit');
+  if(me && me.style.display === 'flex') return true;
+  if(['pago','gasto','nota'].indexOf(S.tab) === -1) return false;
+  const cont = document.getElementById('cont');
+  if(!cont) return false;
+  const campos = cont.querySelectorAll('input, select, textarea');
+  for(let i=0; i<campos.length; i++){
+    const el = campos[i];
+    if(el.type === 'file'){ if(el.files && el.files.length) return true; continue; }
+    if(el === document.activeElement) return true;
+    if(String(el.value||'').trim() !== '') return true;
+  }
+  return false;
+}
+
 async function cargar(){
   // Si el recibo está abierto, no re-renderizar (evita perder la pantalla)
   const _mr = document.getElementById('modalRecibo');
@@ -350,6 +367,12 @@ async function cargar(){
     } else {
       document.getElementById('syncInfo').textContent = '⚠️ Error: '+e.message+' — mostrando datos históricos';
     }
+  }
+  // Si el usuario está capturando, no re-renderizamos (no se pierde lo escrito)
+  if(capturaEnCurso()){
+    const si = document.getElementById('syncInfo');
+    if(si) si.textContent = '✏️ Captura en curso — datos actualizados sin refrescar la pantalla';
+    return;
   }
   render();
 }
@@ -1222,10 +1245,38 @@ let _reciboData = {};
 
 
 // ─── TAB: CORRECCIONES ───────────────────────────────────────────────────────
+// Meses permitidos según el filtro de Correcciones (incluye opción de 1 mes)
+function mesesPermitidosCorr(){
+  const n = S.mesesCorr;
+  if(n >= 999) return null;  // null = todos
+  const set = {};
+  ML.slice(Math.max(0, ML.length - n)).forEach(function(m){
+    const mp = m.split(' ');
+    set[mp[0] + '|' + mp[1]] = true;
+  });
+  return set;
+}
+
+function enRangoCorr(reg, permitidos){
+  if(!permitidos) return true;
+  const key = String(reg.Mes||'') + '|' + String(reg.Año||'').slice(-2);
+  return permitidos[key] === true;
+}
+
+function filtroMesesCorrHTML(){
+  const ops = [[1,'Último mes'],[4,'Últimos 4 meses'],[7,'Últimos 7 meses'],[10,'Últimos 10 meses'],[14,'Últimos 14 meses'],[999,'Todos los meses']];
+  return '<div class="ctrl noprint" style="margin-bottom:12px"><select onchange="setMesesCorr(this.value)">' +
+    ops.map(function(o){ return '<option value="'+o[0]+'" '+(S.mesesCorr===o[0]?'selected':'')+'>'+o[1]+'</option>'; }).join('') +
+    '</select></div>';
+}
+
 function rCorrecciones(){
   const c = calle();
-  const pagos  = DB.pagos.filter(p=>p.Calle===c.id);
-  const gastos = DB.gastos.filter(g=>g.Calle===c.id);
+  const _permCorr = mesesPermitidosCorr();
+  const totalPagos  = DB.pagos.filter(p=>p.Calle===c.id).length;
+  const totalGastos = DB.gastos.filter(g=>g.Calle===c.id).length;
+  const pagos  = DB.pagos.filter(p=>p.Calle===c.id && enRangoCorr(p,_permCorr));
+  const gastos = DB.gastos.filter(g=>g.Calle===c.id && enRangoCorr(g,_permCorr));
 
   function tblPagos(){
     if(pagos.length===0) return '<p class="empty">No hay pagos registrados en Google Sheets para esta calle.</p>';
@@ -1268,15 +1319,17 @@ function rCorrecciones(){
     '<p style="font-size:12px;color:#555;line-height:1.7">Edita montos incorrectos o elimina registros equivocados.<br>⚠️ Solo se muestran registros guardados en Google Sheets.</p>'+
     '</div>'+
     '<div id="msgCorr" class="fmsg" style="margin-bottom:12px"></div>'+
-    '<div class="card azul" style="margin-bottom:14px"><h2 style="margin-bottom:12px">💳 Pagos ('+pagos.length+')</h2><div class="twrap">'+tblPagos()+'</div></div>'+
-    '<div class="card rojo"><h2 style="margin-bottom:12px">💸 Gastos ('+gastos.length+')</h2><div class="twrap">'+tblGastos()+'</div></div>'+
+    filtroMesesCorrHTML()+
+    '<div class="card azul" style="margin-bottom:14px"><h2 style="margin-bottom:12px">💳 Pagos ('+pagos.length+' de '+totalPagos+')</h2><div class="twrap">'+tblPagos()+'</div></div>'+
+    '<div class="card rojo"><h2 style="margin-bottom:12px">💸 Gastos ('+gastos.length+' de '+totalGastos+')</h2><div class="twrap">'+tblGastos()+'</div></div>'+
     '<div id="modalEdit" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center"><div style="background:white;border-radius:12px;padding:28px;max-width:440px;width:90%"><h3 id="modalTit" style="margin-bottom:18px;color:#1a3a6b"></h3><div id="modalCampos"></div><div style="display:flex;gap:10px;margin-top:18px"><button class="btn btn-az" id="modalGuardar" style="flex:1" onclick="confirmarEdicion()">💾 Guardar</button><button class="btn btn-sec" style="flex:1" onclick="cerrarModalEdit()">Cancelar</button></div><div class="fmsg" id="msgModal" style="margin-top:10px"></div></div></div>';
 }
 
 let _editando = {hoja:'', fila:0, campos:[]};
 
 function editarPago(fila, idx){
-  const p = DB.pagos.filter(x=>x.Calle===calle().id)[idx];
+  const p = DB.pagos.find(x=>x._fila==fila);
+  if(!p){ alert('No se encontró el registro.'); return; }
   _editando = {hoja:'Pagos', fila, campos:[
     {label:'Mes',col:4,valor:p.Mes,id:'eM'},
     {label:'Año',col:5,valor:p.Año,id:'eA'},
@@ -1287,7 +1340,8 @@ function editarPago(fila, idx){
 }
 
 function editarGasto(fila, idx){
-  const g = DB.gastos.filter(x=>x.Calle===calle().id)[idx];
+  const g = DB.gastos.find(x=>x._fila==fila);
+  if(!g){ alert('No se encontró el registro.'); return; }
   _editando = {hoja:'Gastos', fila, campos:[
     {label:'Mes',col:2,valor:g.Mes,id:'eM'},
     {label:'Año',col:3,valor:g.Año,id:'eA'},
@@ -1528,6 +1582,7 @@ function setBusq(v){ S.busq=v; rCont(); }
 function setFiltro(v){ S.filtro=v; rCont(); }
 function setMeses(v){ S.meses=parseInt(v); rCont(); }
 function toggleFondo(){ S.verFondo=!S.verFondo; rCont(); }
+function setMesesCorr(v){ S.mesesCorr=parseInt(v); rCont(); }
 
 // ── INICIO ────────────────────────────────────────────────────
 render();      // Render inicial (tablas vacías hasta que cargue Sheets)
