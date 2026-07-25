@@ -465,7 +465,7 @@ function rContactos(){
   return `
     <div class="card verde">
       <h2>📇 Contactos &nbsp;·&nbsp; ${c.icon} ${c.label}</h2>
-      <p style="font-size:12px;color:#555;line-height:1.6;margin-bottom:14px">Registra el tel&eacute;fono (y correo, opcional) de cada casa. El <b>principal</b> es el que recibe los recordatorios de WhatsApp. Si el domicilio dio un segundo n&uacute;mero, gu&aacute;rdalo como <b>alterno</b>.</p>
+      <p style="font-size:12px;color:#555;line-height:1.6;margin-bottom:14px">Registra el tel&eacute;fono (y correo, opcional) de cada casa. El <b>principal</b> es el que recibe los recordatorios de WhatsApp. Si el domicilio dio un segundo n&uacute;mero, gu&aacute;rdalo como <b>alterno</b>. El nombre viene precargado con el due&ntilde;o del listado; <b>si vive alguien que renta, cambia el nombre</b> y se guardar&aacute;.</p>
       <div class="mets">
         <div class="met mvd"><div class="l">📱 Con principal</div><div class="v">${conTel.length}</div></div>
         <div class="met maz"><div class="l">📇 Con alterno</div><div class="v">${conAlt.length}</div></div>
@@ -484,12 +484,12 @@ function rContactos(){
           </select>
         </div>
         <div class="fg">
+          <label id="ctNomLabel">👤 Nombre del vecino</label>
+          <input type="text" id="ctNom" placeholder="Nombre de quien vive aquí">
+        </div>
+        <div class="fg">
           <label>📱 WhatsApp (con 52) *</label>
           <input type="text" id="ctTel" placeholder="52 444 123 4567" inputmode="numeric">
-        </div>
-        <div class="fg" id="ctNomAltWrap" style="display:none">
-          <label>👤 Nombre del alterno</label>
-          <input type="text" id="ctNomAlt" placeholder="Nombre de la 2ª persona">
         </div>
         <div class="fg">
           <label>✉️ Correo (opcional)</label>
@@ -510,13 +510,16 @@ function prefillContacto(){
   const c=calle(), num=document.getElementById('ctNum').value;
   const slot=document.getElementById('ctSlot').value;
   const v=c.vecinos.find(x=>x.num===num);
-  const wrap=document.getElementById('ctNomAltWrap');
-  if(wrap) wrap.style.display = (slot==='alterno') ? '' : 'none';
+  const lbl=document.getElementById('ctNomLabel');
+  const nom=document.getElementById('ctNom');
   if(slot==='alterno'){
+    if(lbl) lbl.textContent='👤 Nombre del alterno';
+    if(nom) nom.value = (v&&v.nombreAlt)?v.nombreAlt:'';
     document.getElementById('ctTel').value    = (v&&v.telAlt)    ? v.telAlt    : '';
     document.getElementById('ctCorreo').value = (v&&v.correoAlt) ? v.correoAlt : '';
-    const na=document.getElementById('ctNomAlt'); if(na) na.value = (v&&v.nombreAlt)?v.nombreAlt:'';
   } else {
+    if(lbl) lbl.textContent='👤 Nombre del vecino (edítalo si renta)';
+    if(nom) nom.value = (v&&v.n)?v.n:'';
     document.getElementById('ctTel').value    = (v&&v.tel)    ? v.tel    : '';
     document.getElementById('ctCorreo').value = (v&&v.correo) ? v.correo : '';
   }
@@ -536,15 +539,15 @@ async function guardarContacto(){
     slot=document.getElementById('ctSlot').value,
     tel=document.getElementById('ctTel').value.replace(/[^0-9]/g,''),
     correo=document.getElementById('ctCorreo').value.trim(),
-    nomAlt=(document.getElementById('ctNomAlt')||{}).value||'',
+    nom=(document.getElementById('ctNom')||{}).value||'',
     msg=document.getElementById('msgContacto');
   if(!num){ msg.className='fmsg err'; msg.style.display='block'; msg.textContent='⚠️ Elige la casa.'; return; }
   if(tel && tel.length<10){ msg.className='fmsg err'; msg.style.display='block'; msg.textContent='⚠️ El teléfono debe tener al menos 10 dígitos (incluye el 52).'; return; }
   if(!tel && !correo){ msg.className='fmsg err'; msg.style.display='block'; msg.textContent='⚠️ Captura al menos teléfono o correo.'; return; }
   const v=c.vecinos.find(x=>x.num===num);
-  const payload={tipo:'contacto',calle:c.id,numero:num,slot:slot,telefono:tel,correo:correo};
-  if(slot==='alterno'){ payload.nombre = nomAlt.trim(); }
-  else { payload.nombre = v?v.n:num; }
+  const payload={tipo:'contacto',calle:c.id,numero:num,slot:slot,telefono:tel,correo:correo,nombre:nom.trim()};
+  // El principal permite corregir el nombre (p. ej. si renta): forzamos la sobrescritura
+  if(slot!=='alterno'){ payload.forzarNombre = true; }
   const ok=await enviar(payload,'btnContacto','msgContacto');
   if(ok){
     msg.className='fmsg ok'; msg.style.display='block';
