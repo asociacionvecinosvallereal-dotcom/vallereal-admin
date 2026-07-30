@@ -38,8 +38,8 @@ body{font-family:Arial,sans-serif;background:#EDECEA;color:#222;font-size:14px;}
 .mam{background:#FAE5C8;}.mam .l,.mam .v{color:#5C2E00;}
 
 /* TABS */
-.tabs{display:flex;border-bottom:2px solid #ccc;margin-bottom:18px;flex-wrap:wrap;gap:2px;}
-.tab{padding:10px 16px;border:none;background:transparent;cursor:pointer;font-size:13px;color:#777;border-bottom:3px solid transparent;margin-bottom:-2px;font-weight:600;white-space:nowrap;}
+.tabs{display:flex;border-bottom:2px solid #ccc;margin-bottom:18px;flex-wrap:nowrap;gap:1px;overflow-x:auto;}
+.tab{padding:8px 10px;border:none;background:transparent;cursor:pointer;font-size:12px;color:#777;border-bottom:3px solid transparent;margin-bottom:-2px;font-weight:600;white-space:nowrap;flex:0 0 auto;}
 .tab.on{color:#1a3a6b;border-bottom-color:#1a3a6b;}
 
 /* CARDS */
@@ -154,7 +154,6 @@ tr:last-child td{border-bottom:none;}
   <div class="tabs noprint" id="tabsEl">
     <button class="tab on"  onclick="setTab('pago')">✏️ Registrar pago</button>
     <button class="tab"     onclick="setTab('gasto')">💸 Registrar gasto</button>
-    <button class="tab"     onclick="setTab('nota')">📋 Notas</button>
     <button class="tab"     onclick="setTab('vecinos')">👥 Vecinos y pagos</button>
     <button class="tab"     onclick="setTab('contactos')">📇 Contactos</button>
     <button class="tab"     onclick="setTab('finanzas')">📊 Resumen financiero</button>
@@ -162,6 +161,7 @@ tr:last-child td{border-bottom:none;}
     <button class="tab"     onclick="setTab('recordatorios')">📢 Recordatorios</button>
     <button class="tab"     onclick="setTab('correcciones')">🔧 Correcciones</button>
     <button class="tab"     onclick="setTab('validar')">🧾 Validar pagos</button>
+    <button class="tab"     onclick="setTab('nota')">📋 Notas</button>
   </div>
 
   <div id="cont"></div>
@@ -438,7 +438,7 @@ function rMets(){
 }
 
 function rTabs(){
-  const ids=['pago','gasto','nota','vecinos','contactos','finanzas','general','recordatorios','correcciones','validar'];
+  const ids=['pago','gasto','vecinos','contactos','finanzas','general','recordatorios','correcciones','validar','nota'];
   document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',S.tab===ids[i]));
 }
 
@@ -518,7 +518,7 @@ function prefillContacto(){
     document.getElementById('ctTel').value    = (v&&v.telAlt)    ? v.telAlt    : '';
     document.getElementById('ctCorreo').value = (v&&v.correoAlt) ? v.correoAlt : '';
   } else {
-    if(lbl) lbl.textContent='👤 Nombre del vecino (edítalo si renta)';
+    if(lbl) lbl.innerHTML='👤 Nombre del vecino <span style="font-size:9px;font-weight:400;text-transform:none;opacity:.65">(edítalo si renta)</span>';
     if(nom) nom.value = (v&&v.n)?v.n:'';
     document.getElementById('ctTel').value    = (v&&v.tel)    ? v.tel    : '';
     document.getElementById('ctCorreo').value = (v&&v.correo) ? v.correo : '';
