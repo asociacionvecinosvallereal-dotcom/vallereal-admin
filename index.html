@@ -876,6 +876,16 @@ function usoFondoMes(calleId, i){
     .reduce((s,g)=>s+Number(g.Monto),0);
 }
 
+// Gastos varios = gastos reales que NO son vigilancia (la vigilancia se muestra aparte como meta)
+function gastoVariosMes(calleId, i){
+  const ml = ML[i]; const mp = ml.split(' ');
+  return DB.gastos
+    .filter(g=>g.Calle===calleId && g.Mes===mp[0] && String(g.Año).slice(-2)===mp[1]
+              && !esUsoFondo(g)
+              && String(g.Concepto||'').toLowerCase().indexOf('vigilancia')<0)
+    .reduce((s,g)=>s+Number(g.Monto),0);
+}
+
 // Helper compartido: índices de los últimos N meses según el filtro S.meses
 function indicesVisibles(){
   const total = ML.length;
@@ -905,6 +915,7 @@ function rFinanzas(){
   // FALTANTE = meta - reunido (lo que falta para cubrir la vigilancia)
   const faltante=meta.map((m,i)=>Math.max(0, m-ing[i]));
   const gasTotal=ML.map((_,i)=>gastoMesReal(c.id,i));
+  const gasVarios=ML.map((_,i)=>gastoVariosMes(c.id,i));  // solo para mostrar
   const usoFondo=ML.map((_,i)=>usoFondoMes(c.id,i));
   // Saldo del mes = aportaciones - gastos + uso de fondo
   const saldo=ing.map((v,i)=>v-gasTotal[i]+usoFondo[i]);
@@ -914,6 +925,7 @@ function rFinanzas(){
   const tFalt=faltante.reduce((a,b)=>a+b,0);
   const filasBase=[
     {l:"🛡️ Pago Vigilancia",       d:meta,     cls:"ffin-am"},
+    {l:"🧾 Gastos varios",          d:gasVarios,cls:"ffin-rj"},
     {l:"💰 Aportaciones del mes",   d:ing,      cls:"ffin-vd"},
     {l:"⚠️ Falta para completar",   d:faltante, cls:"ffin-rj"},
     {l:"🆘 Uso fondo ahorro",       d:usoFondo, cls:"ffin-rj"},
